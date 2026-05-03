@@ -5,8 +5,11 @@ WORKDIR /src
 
 COPY go.mod go.sum ./
 COPY *.go ./
+COPY internal/ internal/
+COPY cmd/ cmd/
 
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /get-ip .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /get-ip . && \
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /resolve ./cmd/resolve
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates \
@@ -14,6 +17,7 @@ RUN apk add --no-cache ca-certificates \
 	&& chown 65534:65534 /data
 
 COPY --from=build /get-ip /usr/local/bin/get-ip
+COPY --from=build /resolve /usr/local/bin/resolve
 
 USER nobody
 EXPOSE 8080

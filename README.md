@@ -1,6 +1,6 @@
 # get-ip
 
-Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/all`** is plain-text detail (optional **GeoLite2** city + ASN blocks); **`/json`** includes **`geo`** and **`asn`** when those MMDBs are loaded. Summaries and forwarded headers use **public** addresses only.
+Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/all`** is plain-text detail (optional estimated location + network sections); **`/json`** includes **`geo`** and **`asn`** when those MMDBs are loaded. Summaries and forwarded headers use **public** addresses only.
 
 ## Run
 
@@ -11,6 +11,10 @@ go build -o get-ip . && ./get-ip
 ```
 
 `PORT` defaults to **8080** (e.g. `PORT=3000 go run .`).
+
+## CLI: `resolve`
+
+The **`resolve`** tool queries local GeoLite MMDBs for any IP (not over HTTP). Full usage, **`fetch` / `--fetch`**, and environment variables are documented in **[documentation/cli/README.md](documentation/cli/README.md)**.
 
 **Docker**
 
@@ -56,11 +60,11 @@ Forwarded headers (public addresses only)
   X-Forwarded-For: …
   …
 
-GeoLite2 (city-level, approximate)
+Estimated location
   City: …
   Country: … (…)
 
-GeoLite2 ASN
+Network
   ASN: …
   Organization: …
   Network: …
@@ -102,7 +106,7 @@ curl -s http://127.0.0.1:8080/json
 }
 ```
 
-The **`geo`** / **`asn`** objects (and the matching **`GeoLite2`** sections in `/all`) appear only when the corresponding MMDB is loaded and the lookup returns data.
+The **`geo`** / **`asn`** objects (and the matching sections in `/all`) appear only when the corresponding MMDB is loaded and the lookup returns data.
 
 ## GeoLite2 (optional)
 
@@ -153,7 +157,7 @@ MAXMIND_LICENSE_KEY=your_license_key_here
 
 1. If **both** `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` are set **and** each MMDB file is **missing** or **older than** `GEOLITE_MAX_AGE_DAYS` (default **7**), the service **downloads** [GeoLite2-City](https://dev.maxmind.com/geoip/docs/databases/geolite2-city) and [GeoLite2-ASN](https://dev.maxmind.com/geoip/docs/databases/geolite2-asn) over HTTPS (**Basic auth**, following redirects per [MaxMind’s download docs](https://dev.maxmind.com/geoip/updating-databases/)).
 2. It opens **`GEOLITE_CITY_PATH`** and **`GEOLITE_ASN_PATH`** (defaults: `data/GeoLite2-City.mmdb` and `data/GeoLite2-ASN.mmdb` locally; **`/data/...`** in Docker unless overridden).
-3. **`/all`** may include **GeoLite2** city and ASN sections; **`/json`** includes **`geo`** and **`asn`** — all use the resolved **public client IP** (IPv4 preferred, else IPv6).
+3. **`/all`** may include **estimated location** and **network** sections; **`/json`** includes **`geo`** and **`asn`** — all use the resolved **public client IP** (IPv4 preferred, else IPv6).
 
 If credentials are **not** set, nothing is downloaded automatically; the app still loads any MMDB files you placed at **`GEOLITE_CITY_PATH`** / **`GEOLITE_ASN_PATH`** yourself.
 

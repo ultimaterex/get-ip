@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/ultimaterex/get-ip/internal/geolookup"
 )
 
 func main() {
@@ -142,8 +144,8 @@ type jsonResponse struct {
 	IPv4      *string         `json:"ipv4"`
 	IPv6      *string         `json:"ipv6"`
 	Forwarded *jsonForwarded  `json:"forwarded,omitempty"`
-	Geo       *geoRecord      `json:"geo,omitempty"`
-	ASN       *asnRecord      `json:"asn,omitempty"`
+	Geo       *geolookup.Geo `json:"geo,omitempty"`
+	ASN       *geolookup.ASN `json:"asn,omitempty"`
 	Request   jsonRequestMeta `json:"request"`
 }
 
