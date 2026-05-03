@@ -119,9 +119,17 @@ h1 {
 .pill.bad { background: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
 .pill.ok { background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
 .pill.neutral { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); }
-.meta { font-size: 0.8125rem; color: var(--muted); margin-bottom: 0.75rem; }
+.meta { font-size: 0.8125rem; color: var(--muted); margin-bottom: 0.75rem; overflow-wrap: anywhere; word-break: break-word; }
+.table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 table.data {
   width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.8125rem;
 }
@@ -130,11 +138,22 @@ table.data th, table.data td {
   padding: 0.45rem 0.5rem;
   border-bottom: 1px solid var(--bd);
   vertical-align: top;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 table.data th.col-num, table.data td.col-num {
   text-align: right;
   white-space: nowrap;
-  width: 5rem;
+  width: 4.25rem;
+  max-width: 4.25rem;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+table.data .td-detail {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
 }
 table.data th {
   font-size: 0.65rem;
@@ -143,10 +162,11 @@ table.data th {
   color: var(--muted);
 }
 .zone-tag { font-size: 0.72rem; color: var(--muted); margin-top: 0.15rem; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78em; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78em; overflow-wrap: anywhere; word-break: break-word; max-width: 100%; }
 .code-row { margin-bottom: 0.35rem; }
 .code-row:last-child { margin-bottom: 0; }
 .code-meaning { font-size: 0.85rem; color: var(--muted); line-height: 1.35; margin-top: 0.2rem; padding-left: 0.05rem; }
+.dnsbl-err { display: block; overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; }
 footer.site {
   margin-top: 2rem;
   text-align: center;
@@ -238,11 +258,11 @@ body.page-loading footer.site {
       (bl.last_refresh ? ' · Last refresh <span class="mono">' + esc(bl.last_refresh) + '</span>' : '') + '</div>';
     var rows = '';
     if (bl.matches && bl.matches.length) {
-      rows = '<table class="data"><thead><tr><th>Source</th><th>IP</th><th>Prefix</th><th>Family</th></tr></thead><tbody>';
+      rows = '<div class="table-scroll"><table class="data"><thead><tr><th>Source</th><th>IP</th><th>Prefix</th><th>Family</th></tr></thead><tbody>';
       bl.matches.forEach(function (m) {
         rows += '<tr><td class="mono">' + esc(m.source || '') + '</td><td class="mono">' + esc(m.ip || '') + '</td><td class="mono">' + esc(m.prefix || '') + '</td><td>' + esc(m.family || '') + '</td></tr>';
       });
-      rows += '</tbody></table>';
+      rows += '</tbody></table></div>';
     } else {
       rows = '<p class="meta">No prefix hits for your IPs.</p>';
     }
@@ -269,7 +289,7 @@ body.page-loading footer.site {
 
     function dnsblDetailCell(c) {
       if (c.error) {
-        var errLine = esc(c.error);
+        var errLine = '<span class="dnsbl-err">' + esc(c.error) + '</span>';
         if (c.return_code_details && c.return_code_details.length) {
           errLine += '<br>' + c.return_code_details.map(function (x) {
             var m = x.meaning ? (' — ' + esc(x.meaning)) : '';
@@ -293,7 +313,7 @@ body.page-loading footer.site {
       return '—';
     }
 
-    var rows = '<table class="data"><thead><tr><th>Zone</th><th>Status</th><th>Detail</th><th class="col-num">RTT (ms)</th></tr></thead><tbody>';
+    var rows = '<div class="table-scroll"><table class="data"><thead><tr><th>Zone</th><th>Status</th><th>Detail</th><th class="col-num" title="Round-trip time (ms)">RTT (ms)</th></tr></thead><tbody>';
     if (d.checks && d.checks.length) {
       d.checks.forEach(function (c) {
         var st, detail;
@@ -307,10 +327,10 @@ body.page-loading footer.site {
           st = pill('ok', 'ok');
           detail = '—';
         }
-        rows += '<tr><td><span class="mono">' + esc(c.zone || '') + '</span><div class="zone-tag">' + esc(c.source || '') + '</div></td><td>' + st + '</td><td>' + detail + '</td><td class="mono col-num">' + esc(String(c.response_ms)) + '</td></tr>';
+        rows += '<tr><td class="td-zone"><span class="mono">' + esc(c.zone || '') + '</span><div class="zone-tag">' + esc(c.source || '') + '</div></td><td class="td-status">' + st + '</td><td class="td-detail">' + detail + '</td><td class="mono col-num">' + esc(String(c.response_ms)) + '</td></tr>';
       });
     }
-    rows += '</tbody></table>';
+    rows += '</tbody></table></div>';
     return head + rows;
   }
 
