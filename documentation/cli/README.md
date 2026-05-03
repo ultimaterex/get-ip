@@ -27,6 +27,10 @@ Prints JSON with **`ip`**, **`geo`**, and **`asn`** (omitted when a database is 
 
 `--fetch` may be written as `-fetch`.
 
+## Optional `.env` file
+
+The **`resolve`** binary (and the **`get-ip`** server) load a **`.env`** file from the **current working directory** when the file exists. Lines use the usual `KEY=value` form. Variables already set in the real environment are **not** overridden (so CI and shell exports win). The repo’s **`.gitignore`** already ignores `.env`.
+
 ## Downloading or refreshing MMDBs
 
 Same behavior as get-ip server startup: **`MAXMIND_ACCOUNT_ID`**, **`MAXMIND_LICENSE_KEY`**, **`GEOLITE_MAX_AGE_DAYS`**, and **`GEOLITE_CITY_PATH`** / **`GEOLITE_ASN_PATH`** (see the main [README](../../README.md#geolite2-optional)).
@@ -36,6 +40,8 @@ export MAXMIND_ACCOUNT_ID=…
 export MAXMIND_LICENSE_KEY=…
 ./resolve fetch
 ```
+
+Or put those keys in **`.env`** next to where you run the command and run **`./resolve fetch`** without exporting them in the shell.
 
 Fetch then look up in one shot:
 

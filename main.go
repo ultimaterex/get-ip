@@ -10,12 +10,14 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ultimaterex/get-ip/internal/envload"
 	"github.com/ultimaterex/get-ip/internal/geolookup"
 )
 
 func main() {
 	log.SetOutput(os.Stdout)
 
+	envload.DotEnv()
 	initGeoLite(context.Background())
 
 	port := strings.TrimSpace(os.Getenv("PORT"))

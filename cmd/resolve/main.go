@@ -11,11 +11,14 @@ import (
 	"os"
 
 	"github.com/oschwald/geoip2-golang/v2"
+	"github.com/ultimaterex/get-ip/internal/envload"
 	"github.com/ultimaterex/get-ip/internal/geolookup"
 )
 
 func main() {
 	log.SetFlags(0)
+	envload.DotEnv()
+
 	args := os.Args[1:]
 	if len(args) == 0 {
 		usage()

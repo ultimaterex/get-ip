@@ -12,6 +12,8 @@ go build -o get-ip . && ./get-ip
 
 `PORT` defaults to **8080** (e.g. `PORT=3000 go run .`).
 
+If a **`.env`** file exists in the current working directory, it is loaded at startup (MaxMind and other variables). Values already set in the environment take precedence. **`.env`** is gitignored.
+
 ## CLI: `resolve`
 
 The **`resolve`** tool queries local GeoLite MMDBs for any IP (not over HTTP). Full usage, **`fetch` / `--fetch`**, and environment variables are documented in **[documentation/cli/README.md](documentation/cli/README.md)**.
