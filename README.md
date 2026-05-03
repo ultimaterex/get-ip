@@ -22,11 +22,31 @@ If a **`.env`** file exists in the current working directory, it is loaded at st
 
 Point **`BLOCKLIST_URLS`** at one or more **HTTP(S) URLs** that serve plain-text **CIDR lists** (same general idea as Spamhaus DROP or FireHOL netsets: one network per line, **`#`** / **`;`** comments). Separate multiple URLs with **`;`**. Optionally suffix **`|tag`** for a stable label in **`/json`** (e.g. `https://www.spamhaus.org/drop/drop.txt|spamhaus-drop`). Tags default from the URL filename if omitted.
 
-On a schedule (**`BLOCKLIST_REFRESH`**, default **`24h`**), the service downloads each feed into memory and tests the visitor’s **public IPv4 and IPv6** (when present) against those prefixes. **`/json`** then includes **`blocklists`** with **`listed`**, **`matched`** (unique source tags), **`matches`** (when listed — each hit includes **`source`**, **`ip`**, **`prefix`** as the **longest matching CIDR** from that feed, and **`family`** **`ipv4`** / **`ipv6`**), plus **`sources_loaded`** and **`last_refresh`**. **`/all`** and the browser UI show the same when configured.
+**Compose / `.env` quoting:** Use either bare URLs or a single pair of quotes around the whole value — avoid YAML-style **`\"https://…\"`** inside the string (that embeds a backslash and breaks parsing). The service trims accidental quotes where possible; prefer `BLOCKLIST_URLS=https://a…;https://b…` or `BLOCKLIST_URLS="https://a…;https://b…"`.
+
+On a schedule (**`BLOCKLIST_REFRESH`**, default **`24h`**), the service downloads each feed **on the server** (not in the visitor’s browser) into memory and tests the visitor’s **public IPv4 and IPv6** (when present) against those prefixes. **`/json`** then includes **`blocklists`** with **`listed`**, **`matched`** (unique source tags), **`matches`** (when listed — each hit includes **`source`**, **`ip`**, **`prefix`** as the **longest matching CIDR** from that feed, and **`family`** **`ipv4`** / **`ipv6`**), plus **`sources_loaded`** and **`last_refresh`**. **`/all`** and the browser UI show the same when configured.
 
 **Licenses and acceptable use** belong to each feed’s publisher — comply with their terms and attribution (e.g. Spamhaus, FireHOL). Listings are **informational** (routing/blocklist membership), not a legal or abuse verdict.
 
 **Copy-paste presets** (Spamhaus, FireHOL level 1–3, proxies, Feodo, DShield, Compose): **[documentation/blocklist-examples.md](documentation/blocklist-examples.md)**.
+
+## DNS blocklists / DNSBL (optional)
+
+For **MxToolbox-style** checks (live DNS queries against RBL zones), set **`DNSBL_ZONES`** to a semicolon-separated list of **zone suffixes** (what you append after the reversed IPv4). Optional **`zone|tag`** per entry for labels in JSON/HTML.
+
+Example:
+
+```env
+DNSBL_ZONES="zen.spamhaus.org|spamhaus-zen;b.barracudacentral.org|barracuda;bl.spamcop.net|spamcop"
+```
+
+Lookups run **on the server** at **`/json`** (and **`/all`**) request time — the browser only receives results in JSON.
+
+The service queries **`{reversed-ipv4}.{zone}`** for each zone and treats **`127.0.0.0/8`** A-record responses as “listed”. **IPv4 only** — if the visitor has no public IPv4, **`dnsbl.eligible`** is false (many real-world DNSBLs do not support IPv6 in this classic form).
+
+**Operational note:** each publisher sets **rate limits and acceptable use**. Prefer short zone lists, sensible **`DNSBL_DEADLINE`** / **`DNSBL_PER_QUERY`**, and compliance with provider policies.
+
+**Copy-paste zone lists** (starter + longer options): **[documentation/dnsbl-examples.md](documentation/dnsbl-examples.md)**.
 
 ## CLI: `resolve`
 
@@ -193,6 +213,10 @@ If credentials are **not** set, nothing is downloaded automatically; the app sti
 | `LOG_FILE` | If set, append the same log lines the process writes to stdout (Go **`log`** package) to this file. Stdout is unchanged, so **`docker logs`** still works. Example for Compose with the default **`/data`** volume: **`LOG_FILE=/data/get-ip.log`** in **`.env`**. Leave empty or unset to disable file logging. |
 | `BLOCKLIST_URLS` | Semicolon-separated HTTP(S) URLs of CIDR blocklist feeds. Optional **`url|tag`** per [Blocklist feeds](#blocklist-feeds-optional). Empty disables the feature. |
 | `BLOCKLIST_REFRESH` | How often to re-download feeds (Go **`time.ParseDuration`**, e.g. **`24h`**, **`6h`**). Default **`24h`**. Minimum effective refresh is **1m** (invalid values fall back to **`24h`**). |
+| `DNSBL_ZONES` | Semicolon-separated DNSBL zone names (optional **`zone|tag`**). Empty disables live DNSBL lookups. See [DNS blocklists](#dns-blocklists--dnsbl-optional). |
+| `DNSBL_PER_QUERY` | Per-zone DNS timeout (Go duration, default **`3s`**). |
+| `DNSBL_DEADLINE` | Overall deadline for all zones in one request (default **`25s`**). |
+| `DNSBL_CONCURRENCY` | Parallel DNS lookups (default **`12`**, max **256**). |
 
 **Attribution:** GeoLite2 is © MaxMind; use requires [GeoLite2 attribution](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) wherever you display this data.
 

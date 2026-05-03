@@ -2,6 +2,8 @@
 
 `get-ip` accepts **`BLOCKLIST_URLS`** as **semicolon-separated** HTTPS URLs. Each feed is one URL; optional **`|tag`** sets the label in **`/json`** → **`blocklists.matched`**. If you omit `|tag`, the label is derived from the filename (e.g. `firehol_level1` from `firehol_level1.netset`).
 
+For **live DNS RBL / DNSBL** queries (MxToolbox-style), use **`DNSBL_ZONES`** instead — see **[dnsbl-examples.md](./dnsbl-examples.md)**.
+
 **Quoting:** The whole value usually needs **double quotes** in shell or Compose because of **`;`**.
 
 **Limits:** Each URL download is capped at **64 MiB**. Very large feeds may need to be split or omitted.
@@ -9,6 +11,8 @@
 **Semantics:** These lists are **routing / reputation style** data — use only in ways allowed by each publisher. Review **Spamhaus** fair-use / acceptable-use, **FireHOL** [CC BY-SA](https://github.com/firehol/blocklist-ipsets/blob/master/LICENSE) and list pages, **Emerging Threats**, **Abuse.ch**, etc.
 
 **Formats:** The parser accepts **CIDR** (`203.0.113.0/24`) or **single IPs** (treated as `/32` or `/128`). Lines starting with **`#`** or **`;`** are ignored. Most FireHOL **`.netset`** and **`.ipset`** files in [firehol/blocklist-ipsets](https://github.com/firehol/blocklist-ipsets) match this.
+
+**Full FireHOL raw URL inventory** (154 feeds + Spamhaus DROP links): **[blocklist-firehol-urls.md](./blocklist-firehol-urls.md)**.
 
 ---
 

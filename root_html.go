@@ -336,6 +336,31 @@ footer.site .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 
     return html;
   }
 
+  function dnsblInner(d) {
+    if (!d) return '';
+    if (!d.eligible) {
+      return row('Note', d.skipped_reason === 'no_public_ipv4'
+        ? 'No public IPv4 — most DNSBLs are IPv4-only.'
+        : (d.skipped_reason || 'skipped'));
+    }
+    var parts = [
+      row('IPv4 checked', d.ipv4 || ''),
+      row('Zones', d.zones_checked != null ? String(d.zones_checked) : ''),
+      row('Listed (any)', d.listed ? 'yes' : 'no')
+    ];
+    if (d.checks && d.checks.length) {
+      d.checks.forEach(function (c) {
+        var label = (c.source || c.zone || 'zone');
+        var detail;
+        if (c.error) detail = 'error: ' + c.error + ' (' + c.response_ms + ' ms)';
+        else if (c.listed) detail = 'LISTED ' + (c.return_codes && c.return_codes.length ? c.return_codes.join(', ') : '') + ' (' + c.response_ms + ' ms)';
+        else detail = 'ok (' + c.response_ms + ' ms)';
+        parts.push(row(label, detail));
+      });
+    }
+    return parts.join('');
+  }
+
   function parseLoc(loc) {
     if (!loc || typeof loc !== 'string') return null;
     var p = loc.split(',');
@@ -404,8 +429,9 @@ footer.site .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 
     if (fwd) html += card('Forwarded', fwd);
     html += card('Location', geoInner(j.geo));
     html += card('Network', asnInner(j.asn));
-    if (j.blocklists) html += card('Blocklists', blocklistsInner(j.blocklists));
     html += cardSpan('Request', reqInner(j.request), true);
+    if (j.blocklists) html += card('Blocklists', blocklistsInner(j.blocklists));
+    if (j.dnsbl) html += card('DNS blocklists (DNSBL)', dnsblInner(j.dnsbl));
 
     statusEl.hidden = true;
     statusEl.textContent = '';

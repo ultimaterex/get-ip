@@ -15,6 +15,11 @@ services:
       # Optional: semicolon-separated CIDR list URLs (see README — Blocklist feeds)
       BLOCKLIST_URLS: ${BLOCKLIST_URLS:-}
       BLOCKLIST_REFRESH: ${BLOCKLIST_REFRESH:-}
+      # Optional: DNSBL zones — live DNS RBL checks (see README — DNS blocklists)
+      DNSBL_ZONES: ${DNSBL_ZONES:-}
+      DNSBL_PER_QUERY: ${DNSBL_PER_QUERY:-}
+      DNSBL_DEADLINE: ${DNSBL_DEADLINE:-}
+      DNSBL_CONCURRENCY: ${DNSBL_CONCURRENCY:-}
     volumes:
       - get-ip-data:/data
     restart: unless-stopped

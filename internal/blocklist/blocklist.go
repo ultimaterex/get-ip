@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ultimaterex/get-ip/internal/cleantoken"
 	"github.com/yl2chen/cidranger"
 )
 
@@ -319,14 +320,14 @@ func longestPrefixCIDR(entries []cidranger.RangerEntry) string {
 func parseSpecs(block string) []sourceSpec {
 	var out []sourceSpec
 	for _, part := range strings.Split(block, ";") {
-		part = strings.TrimSpace(part)
+		part = cleantoken.SemicolonPart(part)
 		if part == "" {
 			continue
 		}
 		rawURL, tag := part, ""
 		if bits := strings.SplitN(part, "|", 2); len(bits) == 2 {
-			rawURL = strings.TrimSpace(bits[0])
-			tag = strings.TrimSpace(bits[1])
+			rawURL = cleantoken.SemicolonPart(bits[0])
+			tag = cleantoken.SemicolonPart(bits[1])
 		}
 		if rawURL == "" {
 			continue

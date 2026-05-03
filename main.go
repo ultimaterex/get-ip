@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ultimaterex/get-ip/internal/blocklist"
+	"github.com/ultimaterex/get-ip/internal/dnsbl"
 	"github.com/ultimaterex/get-ip/internal/envload"
 	"github.com/ultimaterex/get-ip/internal/geolookup"
 )
@@ -24,6 +25,7 @@ func main() {
 	defer cleanupLog()
 	initGeoLite(context.Background())
 	blocklist.InitFromEnv(context.Background())
+	dnsbl.InitFromEnv()
 
 	port := strings.TrimSpace(os.Getenv("PORT"))
 	if port == "" {
@@ -96,6 +98,8 @@ func handleAll(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(&b, "\n")
 	writeBlocklistSection(&b, v4, v6)
 	fmt.Fprintf(&b, "\n")
+	writeDNSBLSection(&b, r, v4)
+	fmt.Fprintf(&b, "\n")
 	fmt.Fprintf(&b, "Request\n")
 	fmt.Fprintf(&b, "  Method: %s\n", r.Method)
 	fmt.Fprintf(&b, "  Host: %s\n", r.Host)
@@ -143,6 +147,9 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 	if bl := blocklist.Lookup(v4, v6); bl != nil {
 		resp.Blocklists = buildJSONBlocklists(bl)
 	}
+	if d := dnsbl.Lookup(r.Context(), v4); d != nil {
+		resp.DNSBL = d
+	}
 
 	out, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
@@ -165,6 +172,7 @@ type jsonResponse struct {
 	Geo        *geolookup.Geo  `json:"geo,omitempty"`
 	ASN        *geolookup.ASN  `json:"asn,omitempty"`
 	Blocklists *jsonBlocklists `json:"blocklists,omitempty"`
+	DNSBL      *dnsbl.Info     `json:"dnsbl,omitempty"`
 	Request    jsonRequestMeta `json:"request"`
 }
 
