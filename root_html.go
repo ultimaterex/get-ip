@@ -10,6 +10,7 @@ func writeRootHTML(w http.ResponseWriter, r *http.Request, ipStr string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Link", `</json>; rel="alternate"; type="application/json"`)
+	w.Header().Add("Link", `</blocklists/json>; rel="alternate"; type="application/json"`)
 	if r.Method == http.MethodHead {
 		return
 	}
@@ -212,15 +213,51 @@ footer.site {
   line-height: 1.5;
 }
 footer.site .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* During fetch: single flat base + shimmer (avoids layered radial repaints; reduced-motion = static tint). */
+body.page-loading {
+  background: var(--bg);
+}
+body.page-loading::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 36%,
+    color-mix(in srgb, var(--accent) 18%, transparent) 50%,
+    transparent 64%
+  );
+  background-size: 240% 100%;
+  animation: page-load-glimmer 1.75s ease-in-out infinite;
+}
+@keyframes page-load-glimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.page-loading::before {
+    animation: none;
+    opacity: 0.5;
+    background-position: 50% 0;
+  }
+}
+body.page-loading .shell,
+body.page-loading footer.site {
+  position: relative;
+  z-index: 1;
+}
 </style>
 </head>
-<body>
+<body class="page-loading">
 <div class="shell">
   <header class="top">
     <p class="ip" id="hero-ip" translate="no">__PRIMARY_IP__</p>
     <p class="hero-sub" id="hero-sub" aria-live="polite"></p>
     <p class="links">
-      <a href="/all">Plain report</a><span class="sep">·</span><a href="/json" target="_blank" rel="noopener">Raw JSON</a>
+      <a href="/all">Plain report</a><span class="sep">·</span><a href="/json" target="_blank" rel="noopener">Raw JSON</a><span class="sep">·</span><a href="/blocklists">Blocklists</a>
     </p>
   </header>
 
@@ -248,6 +285,10 @@ footer.site .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 
   var heroSubEl = document.getElementById('hero-sub');
   var mapMount = document.getElementById('map-mount');
   var map = null;
+
+  function clearPageLoading() {
+    document.body.classList.remove('page-loading');
+  }
 
   function esc(s) {
     var d = document.createElement('div');
@@ -315,57 +356,6 @@ footer.site .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 
 
   function addrInner(j) {
     return row('IPv4', j.ipv4) + row('IPv6', j.ipv6);
-  }
-
-  function blocklistsInner(bl) {
-    if (!bl) return '';
-    var rows = [
-      row('Listed', bl.listed ? 'yes' : 'no'),
-      row('Matched', (bl.matched && bl.matched.length) ? bl.matched.join(', ') : '—'),
-      row('Sources loaded', bl.sources_loaded != null ? String(bl.sources_loaded) : ''),
-      row('Last refresh', bl.last_refresh || '')
-    ];
-    var html = rows.join('');
-    if (bl.matches && bl.matches.length) {
-      bl.matches.forEach(function (m) {
-        var label = 'Hit · ' + (m.source || '');
-        var detail = (m.ip || '') + ' ∈ ' + (m.prefix || '') + ' (' + (m.family || '') + ')';
-        html += row(label, detail);
-      });
-    }
-    return html;
-  }
-
-  function dnsblInner(d) {
-    if (!d) return '';
-    if (!d.eligible && (d.rate_limited || d.skipped_reason === 'rate_limited')) {
-      return row('Status', 'Rate limited — too many fresh DNSBL lookups from this client. Retry later or adjust server limits.');
-    }
-    if (!d.eligible) {
-      return row('Note', d.skipped_reason === 'no_public_ipv4'
-        ? 'No public IPv4 — most DNSBLs are IPv4-only.'
-        : (d.skipped_reason || 'skipped'));
-    }
-    var parts = [];
-    if (d.cached) {
-      parts.push(row('Result', 'From cache' + (d.cache_expires ? ' · expires ' + d.cache_expires : '')));
-    }
-    parts.push(
-      row('IPv4 checked', d.ipv4 || ''),
-      row('Zones', d.zones_checked != null ? String(d.zones_checked) : ''),
-      row('Listed (any)', d.listed ? 'yes' : 'no')
-    );
-    if (d.checks && d.checks.length) {
-      d.checks.forEach(function (c) {
-        var label = (c.source || c.zone || 'zone');
-        var detail;
-        if (c.error) detail = 'error: ' + c.error + ' (' + c.response_ms + ' ms)';
-        else if (c.listed) detail = 'LISTED ' + (c.return_codes && c.return_codes.length ? c.return_codes.join(', ') : '') + ' (' + c.response_ms + ' ms)';
-        else detail = 'ok (' + c.response_ms + ' ms)';
-        parts.push(row(label, detail));
-      });
-    }
-    return parts.join('');
   }
 
   function parseLoc(loc) {
@@ -437,8 +427,6 @@ footer.site .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 
     html += card('Location', geoInner(j.geo));
     html += card('Network', asnInner(j.asn));
     html += cardSpan('Request', reqInner(j.request), true);
-    if (j.blocklists) html += card('Blocklists', blocklistsInner(j.blocklists));
-    if (j.dnsbl) html += card('DNS blocklists (DNSBL)', dnsblInner(j.dnsbl));
 
     statusEl.hidden = true;
     statusEl.textContent = '';
@@ -448,9 +436,11 @@ footer.site .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 
     var coords = j.geo && parseLoc(j.geo.loc);
     if (coords) renderMap(coords[0], coords[1]);
     else renderPlaceholderMap('No GeoLite coordinates — map needs a loc field in JSON.');
+    clearPageLoading();
   }
 
   function fail(msg) {
+    clearPageLoading();
     statusEl.classList.add('err');
     statusEl.textContent = msg;
     renderPlaceholderMap('Load /json to see the map here.');

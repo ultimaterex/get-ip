@@ -29,4 +29,6 @@ data/
 
 # Local browser preview (generated; optional private mock)
 dev/mock.json
+dev/mock-blocklists.json
 dev/preview.html
+dev/preview-blocklists.html

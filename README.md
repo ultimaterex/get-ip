@@ -1,6 +1,6 @@
 # get-ip
 
-Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/`** serves a **small HTML page** when the client’s **`Accept`** header includes **`text/html`** (typical browsers); the page can expand **live details** from **`/json`** and show an **OpenStreetMap** (Leaflet) pin when GeoLite provides coordinates. Non-browser clients get **plain text** (e.g. **`curl`**, scripts). **`/all`** is plain-text detail (optional estimated location + network sections); **`/json`** includes **`geo`** and **`asn`** when those MMDBs are loaded, plus optional **`blocklists`** when you configure IP deny feeds (see [Blocklist feeds](#blocklist-feeds-optional)). Summaries and forwarded headers use **public** addresses only.
+Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/`** serves a **small HTML page** when the client’s **`Accept`** header includes **`text/html`** (typical browsers); the page loads **live details** from **`/json`** (geo, ASN, forwarded headers, map). Non-browser clients get **plain text** (e.g. **`curl`**, scripts). **`/all`** is plain-text detail (optional estimated location + network); **`/json`** includes **`geo`** and **`asn`** when those MMDBs are loaded. Optional **HTTP prefix blocklists** and **DNSBL** live on **`/blocklists`** (HTML), **`/blocklists/json`**, and **`/blocklists/all`** — see [Blocklists](#blocklists). Summaries and forwarded headers use **public** addresses only.
 
 ## Run
 
@@ -14,17 +14,27 @@ go build -o get-ip . && ./get-ip
 
 **Health:** **`GET /health`** (and **`HEAD`**) return **200** with plain text **`ok`**. The Docker image’s **`HEALTHCHECK`** uses **`/health`** on port **8080**; if you change **`PORT`**, adjust your orchestrator’s probe to match.
 
-**Discovery:** HTML on **`/`** includes **`Link: </json>; rel="alternate"; type="application/json"`** so API clients can discover the JSON view ([RFC 8288](https://www.rfc-editor.org/rfc/rfc8288)).
+**Discovery:** HTML responses include **`Link`** headers for **`</json>`** and **`</blocklists/json>`** (`rel="alternate"; type="application/json"`) where applicable ([RFC 8288](https://www.rfc-editor.org/rfc/rfc8288)).
 
 If a **`.env`** file exists in the current working directory, it is loaded at startup (MaxMind and other variables). Values already set in the environment take precedence. **`.env`** is gitignored.
 
 ## Blocklist feeds (optional)
 
-Point **`BLOCKLIST_URLS`** at one or more **HTTP(S) URLs** that serve plain-text **CIDR lists** (same general idea as Spamhaus DROP or FireHOL netsets: one network per line, **`#`** / **`;`** comments). Separate multiple URLs with **`;`**. Optionally suffix **`|tag`** for a stable label in **`/json`** (e.g. `https://www.spamhaus.org/drop/drop.txt|spamhaus-drop`). Tags default from the URL filename if omitted.
+Point **`BLOCKLIST_URLS`** at one or more **HTTP(S) URLs** that serve plain-text **CIDR lists** (same general idea as Spamhaus DROP or FireHOL netsets: one network per line, **`#`** / **`;`** comments). Separate multiple URLs with **`;`**. Optionally suffix **`|tag`** for a stable label in **`/blocklists/json`** (e.g. `https://www.spamhaus.org/drop/drop.txt|spamhaus-drop`). Tags default from the URL filename if omitted.
 
 **Compose / `.env` quoting:** Use either bare URLs or a single pair of quotes around the whole value — avoid YAML-style **`\"https://…\"`** inside the string (that embeds a backslash and breaks parsing). The service trims accidental quotes where possible; prefer `BLOCKLIST_URLS=https://a…;https://b…` or `BLOCKLIST_URLS="https://a…;https://b…"`.
 
-On a schedule (**`BLOCKLIST_REFRESH`**, default **`24h`**), the service downloads each feed **on the server** (not in the visitor’s browser) into memory and tests the visitor’s **public IPv4 and IPv6** (when present) against those prefixes. **`/json`** then includes **`blocklists`** with **`listed`**, **`matched`** (unique source tags), **`matches`** (when listed — each hit includes **`source`**, **`ip`**, **`prefix`** as the **longest matching CIDR** from that feed, and **`family`** **`ipv4`** / **`ipv6`**), plus **`sources_loaded`** and **`last_refresh`**. **`/all`** and the browser UI show the same when configured.
+On a schedule (**`BLOCKLIST_REFRESH`**, default **`24h`**), the service downloads each feed **on the server** (not in the visitor’s browser) into memory and tests the visitor’s **public IPv4 and IPv6** (when present) against those prefixes. The **`blocklists`** object ( **`listed`**, **`matched`**, per-feed **`matches`**, **`sources_loaded`**, **`last_refresh`**) is returned from **`/blocklists/json`** and the **`/blocklists`** HTML page, not from the default **`/json`** payload.
+
+## Blocklists
+
+| Route | Purpose |
+|-------|---------|
+| **`GET /blocklists`** | Browser-focused report (tables for prefix feeds + DNSBL). Plain **`curl`** without **`Accept: text/html`** prints pointers to JSON/plain endpoints. |
+| **`GET /blocklists/json`** | Same core JSON shape as **`/json`**, plus **`blocklists`** and **`dnsbl`** when configured. |
+| **`GET /blocklists/all`** | Plain-text blocklist report (prefix sections + DNSBL), plus forwarded/geo/asn summary. |
+
+The home page (**`/`**) links to **`/blocklists`** so the default view stays lightweight. Old paths **`/spamlists`**, **`/spamlists/json`**, and **`/spamlists/all`** **301** to these routes.
 
 **Licenses and acceptable use** belong to each feed’s publisher — comply with their terms and attribution (e.g. Spamhaus, FireHOL). Listings are **informational** (routing/blocklist membership), not a legal or abuse verdict.
 
@@ -40,7 +50,7 @@ Example:
 DNSBL_ZONES="zen.spamhaus.org|spamhaus-zen;b.barracudacentral.org|barracuda;bl.spamcop.net|spamcop"
 ```
 
-Lookups run **on the server** at **`/json`** (and **`/all`**) request time — the browser only receives results in JSON.
+Lookups run **on the server** when you call **`/blocklists/json`**, **`/blocklists/all`**, or load **`/blocklists`** — the browser only receives results in JSON (or rendered HTML on **`/blocklists`**).
 
 The service queries **`{reversed-ipv4}.{zone}`** for each zone and treats **`127.0.0.0/8`** A-record responses as “listed”. **IPv4 only** — if the visitor has no public IPv4, **`dnsbl.eligible`** is false (many real-world DNSBLs do not support IPv6 in this classic form).
 
@@ -85,7 +95,7 @@ curl -s http://127.0.0.1:8080/
 203.0.113.7
 ```
 
-Open **`/`** in a normal browser tab to see the lightweight HTML view (same IP, links to **`/all`** and **`/json`**).
+Open **`/`** in a normal browser tab to see the lightweight HTML view (same IP, links to **`/all`**, **`/json`**, and **`/blocklists`**).
 
 Offline mock preview (HTML file + **`python dev/gen_preview.py`**): **[documentation/browser-preview.md](documentation/browser-preview.md)**.
 
@@ -110,6 +120,10 @@ Network
   ASN: …
   Organization: …
   Network: …
+
+Blocklists (prefix feeds + DNSBL)
+  GET /blocklists — HTML or pointers · GET /blocklists/json · GET /blocklists/all
+  (legacy /spamlists → /blocklists)
 
 Request
   Method: GET
@@ -148,7 +162,7 @@ curl -s http://127.0.0.1:8080/json
 }
 ```
 
-The **`geo`** / **`asn`** objects (and the matching sections in `/all`) appear only when the corresponding MMDB is loaded and the lookup returns data.
+The **`geo`** / **`asn`** objects (and the matching sections in **`/all`**) appear only when the corresponding MMDB is loaded and the lookup returns data. Optional **`blocklists`** / **`dnsbl`** are only in **`/blocklists/json`** (and the **`/blocklists`** page), not in the default **`/json`** example above.
 
 ## GeoLite2 (optional)
 

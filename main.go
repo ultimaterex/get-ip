@@ -36,6 +36,12 @@ func main() {
 	mux.HandleFunc("/", handleRoot)
 	mux.HandleFunc("/all", handleAll)
 	mux.HandleFunc("/json", handleJSON)
+	mux.HandleFunc("/blocklists/json", handleBlocklistsJSON)
+	mux.HandleFunc("/blocklists/all", handleBlocklistsAll)
+	mux.HandleFunc("/blocklists", handleBlocklists)
+	mux.HandleFunc("/spamlists/json", legacyRedirect("/blocklists/json"))
+	mux.HandleFunc("/spamlists/all", legacyRedirect("/blocklists/all"))
+	mux.HandleFunc("/spamlists", legacyRedirect("/blocklists"))
 	mux.HandleFunc("/health", handleHealth)
 
 	addr := ":" + port
@@ -96,9 +102,9 @@ func handleAll(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(&b, "\n")
 	writeASNSection(&b, r)
 	fmt.Fprintf(&b, "\n")
-	writeBlocklistSection(&b, v4, v6)
-	fmt.Fprintf(&b, "\n")
-	writeDNSBLSection(&b, r, v4)
+	fmt.Fprintf(&b, "Blocklists (prefix feeds + DNSBL)\n")
+	fmt.Fprintf(&b, "  GET /blocklists — HTML or pointers · GET /blocklists/json · GET /blocklists/all\n")
+	fmt.Fprintf(&b, "  (legacy /spamlists → /blocklists)\n")
 	fmt.Fprintf(&b, "\n")
 	fmt.Fprintf(&b, "Request\n")
 	fmt.Fprintf(&b, "  Method: %s\n", r.Method)
@@ -124,6 +130,136 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := buildJSONResponse(r, false)
+
+	out, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		log.Printf("json marshal: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	v4, v6 := publicIPv4IPv6(r)
+	log.Printf("%s %s -> v4=%s v6=%s", r.Method, r.URL.Path, formatIP(v4), formatIP(v6))
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Write(out)
+	w.Write([]byte("\n"))
+}
+
+func legacyRedirect(to string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		http.Redirect(w, r, to, http.StatusMovedPermanently)
+	}
+}
+
+func handleBlocklistsJSON(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.URL.Path != "/blocklists/json" {
+		http.NotFound(w, r)
+		return
+	}
+
+	resp := buildJSONResponse(r, true)
+	out, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		log.Printf("json marshal: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	v4, v6 := publicIPv4IPv6(r)
+	log.Printf("%s %s -> v4=%s v6=%s", r.Method, r.URL.Path, formatIP(v4), formatIP(v6))
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Write(out)
+	w.Write([]byte("\n"))
+}
+
+func handleBlocklistsAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.URL.Path != "/blocklists/all" {
+		http.NotFound(w, r)
+		return
+	}
+
+	v4, v6 := publicIPv4IPv6(r)
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	var b strings.Builder
+	fmt.Fprintf(&b, "Blocklists report (HTTP prefix feeds + DNSBL)\n\n")
+	fmt.Fprintf(&b, "IPv4: %s\n", formatIP(v4))
+	fmt.Fprintf(&b, "IPv6: %s\n", formatIP(v6))
+	fmt.Fprintf(&b, "\n")
+	writeForwardedSection(&b, r)
+	fmt.Fprintf(&b, "\n")
+	writeGeoSection(&b, r)
+	fmt.Fprintf(&b, "\n")
+	writeASNSection(&b, r)
+	fmt.Fprintf(&b, "\n")
+	writeBlocklistSection(&b, v4, v6)
+	fmt.Fprintf(&b, "\n")
+	writeDNSBLSection(&b, r, v4)
+	fmt.Fprintf(&b, "\n")
+	fmt.Fprintf(&b, "Request\n")
+	fmt.Fprintf(&b, "  Method: %s\n", r.Method)
+	fmt.Fprintf(&b, "  Host: %s\n", r.Host)
+	fmt.Fprintf(&b, "  Protocol: %s\n", r.Proto)
+	if ua := r.Header.Get("User-Agent"); ua != "" {
+		fmt.Fprintf(&b, "  User-Agent: %s\n", ua)
+	}
+
+	log.Printf("%s %s -> v4=%s v6=%s", r.Method, r.URL.Path, formatIP(v4), formatIP(v6))
+
+	fmt.Fprint(w, b.String())
+}
+
+func handleBlocklists(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.URL.Path != "/blocklists" {
+		http.NotFound(w, r)
+		return
+	}
+
+	ip := preferredIPv4(r)
+	if ip == nil {
+		ip = preferredIPv6(r)
+	}
+	ipStr := ""
+	if ip != nil {
+		ipStr = ip.String()
+	}
+
+	if prefersHTML(r) {
+		writeBlocklistsHTML(w, r, ipStr)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method == http.MethodHead {
+		return
+	}
+	fmt.Fprintf(w, "Blocklists JSON: /blocklists/json\n")
+	fmt.Fprintf(w, "Plain blocklists report: /blocklists/all\n")
+	fmt.Fprintf(w, "Home: /\n")
+}
+
+// buildJSONResponse builds the standard JSON view. withBlocklists adds HTTP prefix lists and DNSBL (heavier).
+func buildJSONResponse(r *http.Request, withBlocklists bool) jsonResponse {
 	v4, v6 := publicIPv4IPv6(r)
 	resp := jsonResponse{
 		Request: jsonRequestMeta{
@@ -144,25 +280,15 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 		s := v6.String()
 		resp.IPv6 = &s
 	}
-	if bl := blocklist.Lookup(v4, v6); bl != nil {
-		resp.Blocklists = buildJSONBlocklists(bl)
+	if withBlocklists {
+		if bl := blocklist.Lookup(v4, v6); bl != nil {
+			resp.Blocklists = buildJSONBlocklists(bl)
+		}
+		if d := dnsbl.Lookup(r.Context(), dnsblClientKey(r), v4); d != nil {
+			resp.DNSBL = d
+		}
 	}
-	if d := dnsbl.Lookup(r.Context(), dnsblClientKey(r), v4); d != nil {
-		resp.DNSBL = d
-	}
-
-	out, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		log.Printf("json marshal: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("%s %s -> v4=%s v6=%s", r.Method, r.URL.Path, formatIP(v4), formatIP(v6))
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Write(out)
-	w.Write([]byte("\n"))
+	return resp
 }
 
 type jsonResponse struct {

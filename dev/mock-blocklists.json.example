@@ -1,0 +1,74 @@
+{
+  "ipv4": "203.0.113.7",
+  "ipv6": null,
+  "forwarded": {
+    "x_forwarded_for": ["203.0.113.7"]
+  },
+  "geo": {
+    "city": "Example City",
+    "country": "ZZ",
+    "country_name": "Exampleland",
+    "loc": "45.50884,-73.58781",
+    "timezone": "America/Toronto"
+  },
+  "asn": {
+    "asn": 64496,
+    "organization": "Documentation ASN example",
+    "network": "203.0.113.0/24"
+  },
+  "blocklists": {
+    "listed": true,
+    "matched": ["spamhaus-drop"],
+    "matches": [
+      {
+        "source": "spamhaus-drop",
+        "ip": "203.0.113.7",
+        "prefix": "203.0.113.0/24",
+        "family": "ipv4"
+      }
+    ],
+    "sources_loaded": 3,
+    "last_refresh": "2036-01-02T15:04:05Z"
+  },
+  "dnsbl": {
+    "eligible": true,
+    "ipv4": "203.0.113.7",
+    "zones_checked": 4,
+    "listed": true,
+    "cached": false,
+    "checks": [
+      {
+        "source": "spamhaus-zen",
+        "zone": "zen.spamhaus.org",
+        "listed": true,
+        "return_codes": ["127.0.0.4"],
+        "response_ms": 42
+      },
+      {
+        "source": "spamcop",
+        "zone": "bl.spamcop.net",
+        "listed": false,
+        "response_ms": 38
+      },
+      {
+        "source": "barracuda",
+        "zone": "b.barracudacentral.org",
+        "listed": false,
+        "response_ms": 56
+      },
+      {
+        "source": "slow-zone",
+        "zone": "dnsbl.example.invalid",
+        "listed": false,
+        "error": "i/o timeout",
+        "response_ms": 3000
+      }
+    ]
+  },
+  "request": {
+    "method": "GET",
+    "host": "preview.example",
+    "protocol": "HTTP/1.1",
+    "user_agent": "Mozilla/5.0 (compatible; blocklists HTML preview)"
+  }
+}
