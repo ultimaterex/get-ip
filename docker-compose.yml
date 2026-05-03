@@ -6,6 +6,7 @@ services:
     environment:
       PORT: "8080"
       GEOLITE_CITY_PATH: /data/GeoLite2-City.mmdb
+      GEOLITE_ASN_PATH: /data/GeoLite2-ASN.mmdb
       MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}
       MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
       GEOLITE_MAX_AGE_DAYS: ${GEOLITE_MAX_AGE_DAYS:-7}

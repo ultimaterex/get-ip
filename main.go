@@ -77,6 +77,8 @@ func handleAll(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(&b, "\n")
 	writeGeoSection(&b, r)
 	fmt.Fprintf(&b, "\n")
+	writeASNSection(&b, r)
+	fmt.Fprintf(&b, "\n")
 	fmt.Fprintf(&b, "Request\n")
 	fmt.Fprintf(&b, "  Method: %s\n", r.Method)
 	fmt.Fprintf(&b, "  Host: %s\n", r.Host)
@@ -111,6 +113,7 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 		},
 		Forwarded: buildJSONForwarded(r),
 		Geo:       lookupVisitorGeo(r),
+		ASN:       lookupVisitorASN(r),
 	}
 	if v4 != nil {
 		s := v4.String()
@@ -140,6 +143,7 @@ type jsonResponse struct {
 	IPv6      *string         `json:"ipv6"`
 	Forwarded *jsonForwarded  `json:"forwarded,omitempty"`
 	Geo       *geoRecord      `json:"geo,omitempty"`
+	ASN       *asnRecord      `json:"asn,omitempty"`
 	Request   jsonRequestMeta `json:"request"`
 }
 

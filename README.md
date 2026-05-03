@@ -1,6 +1,6 @@
 # get-ip
 
-Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/all`** is plain-text detail (including optional **GeoLite2** lines); **`/json`** returns structured JSON (same forwarding rules; **`geo`** when the MMDB is loaded). Summaries and forwarded headers use **public** addresses only.
+Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/all`** is plain-text detail (optional **GeoLite2** city + ASN blocks); **`/json`** includes **`geo`** and **`asn`** when those MMDBs are loaded. Summaries and forwarded headers use **public** addresses only.
 
 ## Run
 
@@ -60,6 +60,11 @@ GeoLite2 (city-level, approximate)
   City: …
   Country: … (…)
 
+GeoLite2 ASN
+  ASN: …
+  Organization: …
+  Network: …
+
 Request
   Method: GET
   Host: 127.0.0.1:8080
@@ -83,6 +88,11 @@ curl -s http://127.0.0.1:8080/json
     "loc": "45.5088,-73.5878",
     "timezone": "America/Toronto"
   },
+  "asn": {
+    "asn": 16276,
+    "organization": "OVH SAS",
+    "network": "149.56.0.0/16"
+  },
   "request": {
     "method": "GET",
     "host": "127.0.0.1:8080",
@@ -92,7 +102,7 @@ curl -s http://127.0.0.1:8080/json
 }
 ```
 
-The `geo` object (and the **`GeoLite2`** block in `/all`) appear only when a **GeoLite2-City** MMDB is loaded and the lookup returns data.
+The **`geo`** / **`asn`** objects (and the matching **`GeoLite2`** sections in `/all`) appear only when the corresponding MMDB is loaded and the lookup returns data.
 
 ## GeoLite2 (optional)
 
@@ -128,7 +138,7 @@ docker run --rm -p 8080:8080 \
 
 Mount **`/data`** so the downloaded MMDB survives container restarts (`GEOLITE_CITY_PATH` defaults to **`/data/GeoLite2-City.mmdb`** in the image).
 
-**Compose** — `docker-compose.yml` (build) and `docker-compose.ghcr.yml` (pull from GHCR) already configure **`GEOLITE_CITY_PATH=/data/GeoLite2-City.mmdb`**, a **`get-ip-data`** volume mounted at **`/data`**, and pass **`MAXMIND_ACCOUNT_ID`**, **`MAXMIND_LICENSE_KEY`**, and **`GEOLITE_MAX_AGE_DAYS`** via `${VAR:-…}` substitution.
+**Compose** — `docker-compose.yml` (build) and `docker-compose.ghcr.yml` (pull from GHCR) already configure **`GEOLITE_CITY_PATH`** / **`GEOLITE_ASN_PATH`** under **`/data`**, a **`get-ip-data`** volume mounted at **`/data`**, and pass **`MAXMIND_ACCOUNT_ID`**, **`MAXMIND_LICENSE_KEY`**, and **`GEOLITE_MAX_AGE_DAYS`** via `${VAR:-…}` substitution.
 
 Copy **`.env.example`** to **`.env`** next to the compose file (do not commit real keys). Compose loads **`.env`** automatically for that substitution.
 
@@ -141,11 +151,11 @@ MAXMIND_LICENSE_KEY=your_license_key_here
 
 ### 3. What happens on startup
 
-1. If **both** `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` are set **and** the MMDB file is **missing** or **older than** `GEOLITE_MAX_AGE_DAYS` (default **7**), the service **downloads** [GeoLite2-City](https://dev.maxmind.com/geoip/docs/databases/geolite2-city) over HTTPS (**Basic auth**, following redirects as required by [MaxMind’s download docs](https://dev.maxmind.com/geoip/updating-databases/)).
-2. It opens **`GEOLITE_CITY_PATH`** (default `data/GeoLite2-City.mmdb` locally, **`/data/GeoLite2-City.mmdb`** in Docker unless overridden).
-3. **`/all`** may include a **`GeoLite2 (city-level, approximate)`** section; **`/json`** includes **`geo`** — both use the resolved **public client IP** (IPv4 preferred, else IPv6).
+1. If **both** `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` are set **and** each MMDB file is **missing** or **older than** `GEOLITE_MAX_AGE_DAYS` (default **7**), the service **downloads** [GeoLite2-City](https://dev.maxmind.com/geoip/docs/databases/geolite2-city) and [GeoLite2-ASN](https://dev.maxmind.com/geoip/docs/databases/geolite2-asn) over HTTPS (**Basic auth**, following redirects per [MaxMind’s download docs](https://dev.maxmind.com/geoip/updating-databases/)).
+2. It opens **`GEOLITE_CITY_PATH`** and **`GEOLITE_ASN_PATH`** (defaults: `data/GeoLite2-City.mmdb` and `data/GeoLite2-ASN.mmdb` locally; **`/data/...`** in Docker unless overridden).
+3. **`/all`** may include **GeoLite2** city and ASN sections; **`/json`** includes **`geo`** and **`asn`** — all use the resolved **public client IP** (IPv4 preferred, else IPv6).
 
-If credentials are **not** set, nothing is downloaded automatically; the app still loads **`GEOLITE_CITY_PATH`** if you placed an MMDB there yourself.
+If credentials are **not** set, nothing is downloaded automatically; the app still loads any MMDB files you placed at **`GEOLITE_CITY_PATH`** / **`GEOLITE_ASN_PATH`** yourself.
 
 ### Environment reference
 
@@ -153,7 +163,8 @@ If credentials are **not** set, nothing is downloaded automatically; the app sti
 |----------|---------|
 | `MAXMIND_ACCOUNT_ID` | MaxMind account ID (numeric string) |
 | `MAXMIND_LICENSE_KEY` | License key from the MaxMind portal |
-| `GEOLITE_CITY_PATH` | Path to the MMDB file (default `data/GeoLite2-City.mmdb`; Docker image defaults to `/data/GeoLite2-City.mmdb`) |
+| `GEOLITE_CITY_PATH` | Path to the City MMDB (default `data/GeoLite2-City.mmdb`; Docker defaults to `/data/GeoLite2-City.mmdb`) |
+| `GEOLITE_ASN_PATH` | Path to the ASN MMDB (default `data/GeoLite2-ASN.mmdb`; Docker defaults to `/data/GeoLite2-ASN.mmdb`) |
 | `GEOLITE_MAX_AGE_DAYS` | Re-download if the file is older than this many days (default **7**) |
 
 **Attribution:** GeoLite2 is © MaxMind; use requires [GeoLite2 attribution](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) wherever you display this data.

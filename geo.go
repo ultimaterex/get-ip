@@ -19,13 +19,19 @@ import (
 	"github.com/oschwald/geoip2-golang/v2"
 )
 
-// MaxMind GeoLite2 direct download (HTTPS + Basic auth). See:
+// MaxMind GeoLite2 direct downloads (HTTPS + Basic auth). See:
 // https://dev.maxmind.com/geoip/updating-databases/
-const geoliteCityDownloadURL = "https://download.maxmind.com/geoip/databases/GeoLite2-City/download?suffix=tar.gz"
+const (
+	geoliteCityDownloadURL = "https://download.maxmind.com/geoip/databases/GeoLite2-City/download?suffix=tar.gz"
+	geoliteASNDownloadURL  = "https://download.maxmind.com/geoip/databases/GeoLite2-ASN/download?suffix=tar.gz"
+	tarEntryCityMMDB       = "GeoLite2-City.mmdb"
+	tarEntryASNMMDB        = "GeoLite2-ASN.mmdb"
+)
 
 var (
-	geoMu sync.RWMutex
-	geoDB *geoip2.Reader
+	geoMu     sync.RWMutex
+	geoCityDB *geoip2.Reader
+	geoASNDB  *geoip2.Reader
 )
 
 // geoRecord is included in /all and /json when GeoLite2-City data is available.
@@ -42,11 +48,25 @@ type geoRecord struct {
 	Timezone      string `json:"timezone,omitempty"`
 }
 
+// asnRecord is included in /all and /json when GeoLite2-ASN data is available.
+type asnRecord struct {
+	ASN          uint   `json:"asn,omitempty"`
+	Organization string `json:"organization,omitempty"`
+	Network      string `json:"network,omitempty"`
+}
+
 func geoliteDBPath() string {
 	if p := strings.TrimSpace(os.Getenv("GEOLITE_CITY_PATH")); p != "" {
 		return p
 	}
 	return filepath.Join("data", "GeoLite2-City.mmdb")
+}
+
+func geoliteASNPath() string {
+	if p := strings.TrimSpace(os.Getenv("GEOLITE_ASN_PATH")); p != "" {
+		return p
+	}
+	return filepath.Join("data", "GeoLite2-ASN.mmdb")
 }
 
 func maxmindCreds() (accountID, licenseKey string) {
@@ -67,34 +87,53 @@ func maxAgeForRefresh() time.Duration {
 	return time.Duration(n) * 24 * time.Hour
 }
 
-// initGeoLite downloads (when configured) and opens the GeoLite2-City database.
+// initGeoLite downloads (when configured) and opens GeoLite2-City and GeoLite2-ASN databases.
 // It is non-fatal: the HTTP server still runs if GeoIP is unavailable.
 func initGeoLite(ctx context.Context) {
-	path := geoliteDBPath()
+	cityPath := geoliteDBPath()
+	asnPath := geoliteASNPath()
+	maxAge := maxAgeForRefresh()
 	acc, key := maxmindCreds()
+
 	if acc != "" && key != "" {
-		need, reason := shouldDownloadGeolite(path, maxAgeForRefresh())
-		if need {
-			log.Printf("geolite: updating database (%s)", reason)
-			if err := downloadGeoLiteCity(ctx, path, acc, key); err != nil {
-				log.Printf("geolite: download failed: %v (using existing file if any)", err)
+		if need, reason := shouldDownloadGeolite(cityPath, maxAge); need {
+			log.Printf("geolite: updating city database (%s)", reason)
+			if err := downloadGeoliteMMDB(ctx, geoliteCityDownloadURL, cityPath, tarEntryCityMMDB, acc, key); err != nil {
+				log.Printf("geolite: city download failed: %v (using existing file if any)", err)
+			}
+		}
+		if need, reason := shouldDownloadGeolite(asnPath, maxAge); need {
+			log.Printf("geolite: updating ASN database (%s)", reason)
+			if err := downloadGeoliteMMDB(ctx, geoliteASNDownloadURL, asnPath, tarEntryASNMMDB, acc, key); err != nil {
+				log.Printf("geolite: asn download failed: %v (using existing file if any)", err)
 			}
 		}
 	} else {
-		log.Println("geolite: MAXMIND_ACCOUNT_ID / MAXMIND_LICENSE_KEY not set; only using local MMDB if present")
+		log.Println("geolite: MAXMIND_ACCOUNT_ID / MAXMIND_LICENSE_KEY not set; only using local MMDB files if present")
 	}
 
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			log.Println("geolite: no database file; /all and /json will omit geo")
-			return
+	if _, err := os.Stat(cityPath); err == nil {
+		if err := openCityDB(cityPath); err != nil {
+			log.Printf("geolite: open city db: %v", err)
 		}
-		log.Printf("geolite: stat %s: %v", path, err)
-		return
+	} else if !os.IsNotExist(err) {
+		log.Printf("geolite: stat city db: %v", err)
 	}
 
-	if err := openGeoDB(path); err != nil {
-		log.Printf("geolite: open: %v", err)
+	if _, err := os.Stat(asnPath); err == nil {
+		if err := openASNDB(asnPath); err != nil {
+			log.Printf("geolite: open asn db: %v", err)
+		}
+	} else if !os.IsNotExist(err) {
+		log.Printf("geolite: stat asn db: %v", err)
+	}
+
+	if geoCityDB == nil && geoASNDB == nil {
+		if _, e1 := os.Stat(cityPath); os.IsNotExist(e1) {
+			if _, e2 := os.Stat(asnPath); os.IsNotExist(e2) {
+				log.Println("geolite: no MMDB files found; geo/asn omitted from responses")
+			}
+		}
 	}
 }
 
@@ -112,17 +151,8 @@ func shouldDownloadGeolite(path string, maxAge time.Duration) (bool, string) {
 	return false, ""
 }
 
-func downloadGeoLiteCity(ctx context.Context, destPath, accountID, licenseKey string) error {
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, geoliteCityDownloadURL, nil)
-	if err != nil {
-		return err
-	}
-	req.SetBasicAuth(accountID, licenseKey)
-
-	client := &http.Client{
+func maxmindHTTPClient() *http.Client {
+	return &http.Client{
 		Timeout: 15 * time.Minute,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
@@ -134,8 +164,19 @@ func downloadGeoLiteCity(ctx context.Context, destPath, accountID, licenseKey st
 			return nil
 		},
 	}
+}
 
-	resp, err := client.Do(req)
+func downloadGeoliteMMDB(ctx context.Context, downloadURL, destPath, mmdbEntryName, accountID, licenseKey string) error {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(accountID, licenseKey)
+
+	resp, err := maxmindHTTPClient().Do(req)
 	if err != nil {
 		return err
 	}
@@ -149,7 +190,7 @@ func downloadGeoLiteCity(ctx context.Context, destPath, accountID, licenseKey st
 		return err
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(destPath), "GeoLite2-City-*.mmdb")
+	tmp, err := os.CreateTemp(filepath.Dir(destPath), "geolite-*.mmdb")
 	if err != nil {
 		return err
 	}
@@ -181,7 +222,7 @@ func downloadGeoLiteCity(ctx context.Context, destPath, accountID, licenseKey st
 		if h.Typeflag != tar.TypeReg {
 			continue
 		}
-		if !strings.HasSuffix(h.Name, "GeoLite2-City.mmdb") {
+		if !strings.HasSuffix(h.Name, mmdbEntryName) {
 			continue
 		}
 		if _, err := io.Copy(tmp, tr); err != nil {
@@ -197,7 +238,7 @@ func downloadGeoLiteCity(ctx context.Context, destPath, accountID, licenseKey st
 		return err
 	}
 	if !found {
-		return fmt.Errorf("tar.gz did not contain GeoLite2-City.mmdb")
+		return fmt.Errorf("tar.gz did not contain %s", mmdbEntryName)
 	}
 
 	if err := os.Rename(tmpPath, destPath); err != nil {
@@ -208,18 +249,34 @@ func downloadGeoLiteCity(ctx context.Context, destPath, accountID, licenseKey st
 	return nil
 }
 
-func openGeoDB(path string) error {
+func openCityDB(path string) error {
 	geoMu.Lock()
 	defer geoMu.Unlock()
-	if geoDB != nil {
-		_ = geoDB.Close()
-		geoDB = nil
+	if geoCityDB != nil {
+		_ = geoCityDB.Close()
+		geoCityDB = nil
 	}
 	db, err := geoip2.Open(path)
 	if err != nil {
 		return err
 	}
-	geoDB = db
+	geoCityDB = db
+	log.Printf("geolite: loaded %s (%s)", path, db.Metadata().DatabaseType)
+	return nil
+}
+
+func openASNDB(path string) error {
+	geoMu.Lock()
+	defer geoMu.Unlock()
+	if geoASNDB != nil {
+		_ = geoASNDB.Close()
+		geoASNDB = nil
+	}
+	db, err := geoip2.Open(path)
+	if err != nil {
+		return err
+	}
+	geoASNDB = db
 	log.Printf("geolite: loaded %s (%s)", path, db.Metadata().DatabaseType)
 	return nil
 }
@@ -253,7 +310,7 @@ func lookupGeo(ip net.IP) *geoRecord {
 	}
 
 	geoMu.RLock()
-	db := geoDB
+	db := geoCityDB
 	geoMu.RUnlock()
 	if db == nil {
 		return nil
@@ -339,5 +396,65 @@ func writeGeoSection(b *strings.Builder, r *http.Request) {
 	}
 	if g.Timezone != "" {
 		fmt.Fprintf(b, "  Timezone: %s\n", g.Timezone)
+	}
+}
+
+func lookupVisitorASN(r *http.Request) *asnRecord {
+	ip := preferredIPv4(r)
+	if ip == nil {
+		ip = preferredIPv6(r)
+	}
+	if ip == nil {
+		return nil
+	}
+	return lookupASN(ip)
+}
+
+func lookupASN(ip net.IP) *asnRecord {
+	a, ok := ipToAddr(ip)
+	if !ok {
+		return nil
+	}
+
+	geoMu.RLock()
+	db := geoASNDB
+	geoMu.RUnlock()
+	if db == nil {
+		return nil
+	}
+
+	rec, err := db.ASN(a)
+	if err != nil || rec == nil || !rec.HasData() {
+		return nil
+	}
+
+	out := &asnRecord{
+		ASN:          rec.AutonomousSystemNumber,
+		Organization: rec.AutonomousSystemOrganization,
+	}
+	if rec.Network.IsValid() {
+		out.Network = rec.Network.String()
+	}
+	if out.ASN == 0 && out.Organization == "" && out.Network == "" {
+		return nil
+	}
+	return out
+}
+
+// writeASNSection appends a GeoLite2 ASN block to /all when lookupVisitorASN returns data.
+func writeASNSection(b *strings.Builder, r *http.Request) {
+	a := lookupVisitorASN(r)
+	if a == nil {
+		return
+	}
+	fmt.Fprintf(b, "GeoLite2 ASN\n")
+	if a.ASN != 0 {
+		fmt.Fprintf(b, "  ASN: %d\n", a.ASN)
+	}
+	if a.Organization != "" {
+		fmt.Fprintf(b, "  Organization: %s\n", a.Organization)
+	}
+	if a.Network != "" {
+		fmt.Fprintf(b, "  Network: %s\n", a.Network)
 	}
 }

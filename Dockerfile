@@ -19,6 +19,7 @@ USER nobody
 EXPOSE 8080
 ENV PORT=8080
 ENV GEOLITE_CITY_PATH=/data/GeoLite2-City.mmdb
+ENV GEOLITE_ASN_PATH=/data/GeoLite2-ASN.mmdb
 
 # Request logs go to stdout — use `docker logs` / your orchestrator’s log tail.
 ENTRYPOINT ["/usr/local/bin/get-ip"]
