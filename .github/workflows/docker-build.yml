@@ -1,0 +1,52 @@
+name: Docker build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase image name (GHCR)
+        run: echo "IMAGE_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        run: docker build -t get-ip:build .
+
+      - name: Save artifact
+        run: docker save get-ip:build -o get-ip-docker.tar
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: get-ip-docker
+          path: get-ip-docker.tar
+          if-no-files-found: error
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push to GHCR
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        run: |
+          IMAGE="ghcr.io/${IMAGE_LC}"
+          docker tag get-ip:build "${IMAGE}:${GITHUB_SHA}"
+          docker tag get-ip:build "${IMAGE}:latest"
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          docker push "${IMAGE}:latest"
