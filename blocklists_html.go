@@ -144,6 +144,9 @@ table.data th {
 }
 .zone-tag { font-size: 0.72rem; color: var(--muted); margin-top: 0.15rem; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78em; }
+.code-row { margin-bottom: 0.35rem; }
+.code-row:last-child { margin-bottom: 0; }
+.code-meaning { font-size: 0.85rem; color: var(--muted); line-height: 1.35; margin-top: 0.2rem; padding-left: 0.05rem; }
 footer.site {
   margin-top: 2rem;
   text-align: center;
@@ -194,7 +197,7 @@ body.page-loading footer.site {
   </nav>
   <header>
     <h1 translate="no">__PRIMARY_IP__</h1>
-    <p class="lead">Blocklist results for your IP — for reference only.</p>
+    <p class="lead">Blocklist results for your IP.</p>
   </header>
   <div class="status" id="status">Loading blocklist checks…</div>
   <div id="panels" hidden></div>
@@ -264,16 +267,42 @@ body.page-loading footer.site {
     if (d.cache_expires) head += ' · cache expires <span class="mono">' + esc(d.cache_expires) + '</span>';
     head += '</div>';
 
-    var rows = '<table class="data"><thead><tr><th>Zone</th><th>Status</th><th>Codes / error</th><th class="col-num">RTT (ms)</th></tr></thead><tbody>';
+    function dnsblDetailCell(c) {
+      if (c.error) {
+        var errLine = esc(c.error);
+        if (c.return_code_details && c.return_code_details.length) {
+          errLine += '<br>' + c.return_code_details.map(function (x) {
+            var m = x.meaning ? (' — ' + esc(x.meaning)) : '';
+            return '<span class="mono">' + esc(x.code) + '</span>' + m;
+          }).join('<br>');
+        }
+        return errLine;
+      }
+      if (c.listed) {
+        if (c.return_code_details && c.return_code_details.length) {
+          return c.return_code_details.map(function (x) {
+            var m = x.meaning ? ('<div class="code-meaning">' + esc(x.meaning) + '</div>') : '';
+            return '<div class="code-row"><span class="mono">' + esc(x.code) + '</span>' + m + '</div>';
+          }).join('');
+        }
+        if (c.return_codes && c.return_codes.length) {
+          return '<span class="mono">' + esc(c.return_codes.join(', ')) + '</span>';
+        }
+        return '—';
+      }
+      return '—';
+    }
+
+    var rows = '<table class="data"><thead><tr><th>Zone</th><th>Status</th><th>Detail</th><th class="col-num">RTT (ms)</th></tr></thead><tbody>';
     if (d.checks && d.checks.length) {
       d.checks.forEach(function (c) {
         var st, detail;
         if (c.error) {
           st = pill('error', 'bad');
-          detail = esc(c.error);
+          detail = dnsblDetailCell(c);
         } else if (c.listed) {
           st = pill('LISTED', 'bad');
-          detail = (c.return_codes && c.return_codes.length) ? '<span class="mono">' + esc(c.return_codes.join(', ')) + '</span>' : '—';
+          detail = dnsblDetailCell(c);
         } else {
           st = pill('ok', 'ok');
           detail = '—';

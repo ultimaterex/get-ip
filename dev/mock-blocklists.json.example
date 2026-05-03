@@ -42,6 +42,9 @@
         "zone": "zen.spamhaus.org",
         "listed": true,
         "return_codes": ["127.0.0.4"],
+        "return_code_details": [
+          { "code": "127.0.0.4", "meaning": "XBL — exploit/malware-infected (includes CBL data)" }
+        ],
         "response_ms": 42
       },
       {

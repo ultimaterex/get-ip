@@ -28,14 +28,35 @@ const (
 	defaultMaxClientRLKeys = 20000
 )
 
+// ReturnCodeDetail pairs a DNS A-record response (typically 127.0.0.0/8) with an optional human note.
+type ReturnCodeDetail struct {
+	Code    string `json:"code"`
+	Meaning string `json:"meaning,omitempty"`
+}
+
 // Check is one zone result against the visitor IPv4 address.
 type Check struct {
-	Source      string   `json:"source"`
-	Zone        string   `json:"zone"`
-	Listed      bool     `json:"listed"`
-	ReturnCodes []string `json:"return_codes,omitempty"`
-	Error       string   `json:"error,omitempty"`
-	ResponseMs  int64    `json:"response_ms"`
+	Source             string             `json:"source"`
+	Zone               string             `json:"zone"`
+	Listed             bool               `json:"listed"`
+	ReturnCodes        []string           `json:"return_codes,omitempty"`
+	ReturnCodeDetails  []ReturnCodeDetail `json:"return_code_details,omitempty"`
+	Error              string             `json:"error,omitempty"`
+	ResponseMs         int64              `json:"response_ms"`
+}
+
+// ReturnSummary formats return codes with meanings for plain-text output.
+func (c Check) ReturnSummary() string {
+	if c.Error != "" {
+		if len(c.ReturnCodeDetails) > 0 {
+			return c.Error + " · " + joinMeaningLine(c.ReturnCodeDetails)
+		}
+		return c.Error
+	}
+	if len(c.ReturnCodeDetails) > 0 {
+		return joinMeaningLine(c.ReturnCodeDetails)
+	}
+	return strings.Join(c.ReturnCodes, ", ")
 }
 
 // Info is returned when DNSBL is configured (even if the client has no IPv4 to check).
@@ -254,6 +275,8 @@ func Lookup(ctx context.Context, clientKey string, v4 net.IP) *Info {
 			listed, codes := interpretReturnAddrs(addrs)
 			chk.Listed = listed
 			chk.ReturnCodes = codes
+			spamhausAdjustCheck(sp.zone, &chk)
+			chk.ReturnCodeDetails = enrichReturnCodes(sp.zone, chk.ReturnCodes)
 			ch <- chk
 		}(sp)
 	}
@@ -263,6 +286,10 @@ func Lookup(ctx context.Context, clientKey string, v4 net.IP) *Info {
 		res = append(res, c)
 	}
 	sort.Slice(res, func(i, j int) bool {
+		ri, rj := dnsblCheckRank(res[i]), dnsblCheckRank(res[j])
+		if ri != rj {
+			return ri < rj
+		}
 		if res[i].Source != res[j].Source {
 			return res[i].Source < res[j].Source
 		}
@@ -316,6 +343,18 @@ func storeCache(subject string, inf *Info, exp time.Time) {
 	cp.CacheExpiresRFC = ""
 	cp.RateLimited = false
 	dnsblCache.Store(subject, cacheEntry{info: &cp, expires: exp})
+}
+
+// dnsblCheckRank orders checks for display: listed first, then lookup errors, then clean (lower = sooner).
+func dnsblCheckRank(c Check) int {
+	switch {
+	case c.Listed:
+		return 0
+	case c.Error != "":
+		return 1
+	default:
+		return 2
+	}
 }
 
 func trimErr(err error) string {

@@ -42,9 +42,9 @@ func writeDNSBLSection(b *strings.Builder, r *http.Request, v4 net.IP) {
 		line := fmt.Sprintf("    - %s (%s): ", c.Source, c.Zone)
 		switch {
 		case c.Error != "":
-			fmt.Fprintf(b, "%serror — %s (%d ms)\n", line, c.Error, c.ResponseMs)
+			fmt.Fprintf(b, "%serror — %s (%d ms)\n", line, c.ReturnSummary(), c.ResponseMs)
 		case c.Listed:
-			fmt.Fprintf(b, "%sLISTED %v (%d ms)\n", line, c.ReturnCodes, c.ResponseMs)
+			fmt.Fprintf(b, "%sLISTED — %s (%d ms)\n", line, c.ReturnSummary(), c.ResponseMs)
 		default:
 			fmt.Fprintf(b, "%sok (%d ms)\n", line, c.ResponseMs)
 		}
