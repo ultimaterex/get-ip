@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -12,6 +14,8 @@ import (
 func main() {
 	log.SetOutput(os.Stdout)
 
+	initGeoLite(context.Background())
+
 	port := strings.TrimSpace(os.Getenv("PORT"))
 	if port == "" {
 		port = "8080"
@@ -20,6 +24,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleRoot)
 	mux.HandleFunc("/all", handleAll)
+	mux.HandleFunc("/json", handleJSON)
 
 	addr := ":" + port
 	log.Printf("listening on %s", addr)
@@ -61,9 +66,99 @@ func handleAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	candidates := collectCandidates(r)
-	var v4, v6 net.IP
-	for _, ip := range candidates {
+	v4, v6 := publicIPv4IPv6(r)
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	var b strings.Builder
+	fmt.Fprintf(&b, "IPv4: %s\n", formatIP(v4))
+	fmt.Fprintf(&b, "IPv6: %s\n", formatIP(v6))
+	fmt.Fprintf(&b, "\n")
+	writeForwardedSection(&b, r)
+	fmt.Fprintf(&b, "\n")
+	writeGeoSection(&b, r)
+	fmt.Fprintf(&b, "\n")
+	fmt.Fprintf(&b, "Request\n")
+	fmt.Fprintf(&b, "  Method: %s\n", r.Method)
+	fmt.Fprintf(&b, "  Host: %s\n", r.Host)
+	fmt.Fprintf(&b, "  Protocol: %s\n", r.Proto)
+	if ua := r.Header.Get("User-Agent"); ua != "" {
+		fmt.Fprintf(&b, "  User-Agent: %s\n", ua)
+	}
+
+	log.Printf("%s %s -> v4=%s v6=%s", r.Method, r.URL.Path, formatIP(v4), formatIP(v6))
+
+	fmt.Fprint(w, b.String())
+}
+
+func handleJSON(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if r.URL.Path != "/json" {
+		http.NotFound(w, r)
+		return
+	}
+
+	v4, v6 := publicIPv4IPv6(r)
+	resp := jsonResponse{
+		Request: jsonRequestMeta{
+			Method:    r.Method,
+			Host:      r.Host,
+			Protocol:  r.Proto,
+			UserAgent: r.Header.Get("User-Agent"),
+		},
+		Forwarded: buildJSONForwarded(r),
+		Geo:       lookupVisitorGeo(r),
+	}
+	if v4 != nil {
+		s := v4.String()
+		resp.IPv4 = &s
+	}
+	if v6 != nil {
+		s := v6.String()
+		resp.IPv6 = &s
+	}
+
+	out, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		log.Printf("json marshal: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("%s %s -> v4=%s v6=%s", r.Method, r.URL.Path, formatIP(v4), formatIP(v6))
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Write(out)
+	w.Write([]byte("\n"))
+}
+
+type jsonResponse struct {
+	IPv4      *string         `json:"ipv4"`
+	IPv6      *string         `json:"ipv6"`
+	Forwarded *jsonForwarded  `json:"forwarded,omitempty"`
+	Geo       *geoRecord      `json:"geo,omitempty"`
+	Request   jsonRequestMeta `json:"request"`
+}
+
+type jsonForwarded struct {
+	CFConnectingIP *string  `json:"cf_connecting_ip,omitempty"`
+	TrueClientIP   *string  `json:"true_client_ip,omitempty"`
+	XRealIP        *string  `json:"x_real_ip,omitempty"`
+	XForwardedFor  []string `json:"x_forwarded_for,omitempty"`
+}
+
+type jsonRequestMeta struct {
+	Method    string `json:"method"`
+	Host      string `json:"host"`
+	Protocol  string `json:"protocol"`
+	UserAgent string `json:"user_agent,omitempty"`
+}
+
+func publicIPv4IPv6(r *http.Request) (v4, v6 net.IP) {
+	for _, ip := range collectCandidates(r) {
 		if !isPublicVisitorIP(ip) {
 			continue
 		}
@@ -77,28 +172,35 @@ func handleAll(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	return v4, v6
+}
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	var b strings.Builder
-	fmt.Fprintf(&b, "IPv4: %s\n", formatIP(v4))
-	fmt.Fprintf(&b, "IPv6: %s\n", formatIP(v6))
-	fmt.Fprintf(&b, "\n")
-	writePublicIPHeader(&b, r, "CF-Connecting-IP")
-	writePublicIPHeader(&b, r, "True-Client-IP")
-	writePublicIPHeader(&b, r, "X-Real-IP")
-	writePublicXForwardedFor(&b, r)
-	fmt.Fprintf(&b, "\n")
-	fmt.Fprintf(&b, "Request\n")
-	fmt.Fprintf(&b, "  Method: %s\n", r.Method)
-	fmt.Fprintf(&b, "  Host: %s\n", r.Host)
-	fmt.Fprintf(&b, "  Protocol: %s\n", r.Proto)
-	if ua := r.Header.Get("User-Agent"); ua != "" {
-		fmt.Fprintf(&b, "  User-Agent: %s\n", ua)
+func optionalPublicIPString(r *http.Request, header string) *string {
+	v := strings.TrimSpace(r.Header.Get(header))
+	if v == "" {
+		return nil
 	}
+	ip := net.ParseIP(v)
+	if ip == nil || !isPublicVisitorIP(ip) {
+		return nil
+	}
+	s := ip.String()
+	return &s
+}
 
-	log.Printf("%s %s -> v4=%s v6=%s", r.Method, r.URL.Path, formatIP(v4), formatIP(v6))
-
-	fmt.Fprint(w, b.String())
+func buildJSONForwarded(r *http.Request) *jsonForwarded {
+	f := jsonForwarded{
+		CFConnectingIP: optionalPublicIPString(r, "CF-Connecting-IP"),
+		TrueClientIP:   optionalPublicIPString(r, "True-Client-IP"),
+		XRealIP:        optionalPublicIPString(r, "X-Real-IP"),
+	}
+	if x := publicXFFList(r); len(x) > 0 {
+		f.XForwardedFor = x
+	}
+	if f.CFConnectingIP == nil && f.TrueClientIP == nil && f.XRealIP == nil && len(f.XForwardedFor) == 0 {
+		return nil
+	}
+	return &f
 }
 
 // isPublicVisitorIP reports IPs safe to show visitors: routable on the public Internet.
@@ -120,6 +222,21 @@ func isPublicVisitorIP(ip net.IP) bool {
 	return ip.IsGlobalUnicast()
 }
 
+// writeForwardedSection prints proxy-supplied headers that contain public addresses only.
+// If none are present after filtering, the section is omitted.
+func writeForwardedSection(b *strings.Builder, r *http.Request) {
+	var inner strings.Builder
+	writePublicIPHeader(&inner, r, "CF-Connecting-IP")
+	writePublicIPHeader(&inner, r, "True-Client-IP")
+	writePublicIPHeader(&inner, r, "X-Real-IP")
+	writePublicXForwardedFor(&inner, r)
+	if inner.Len() == 0 {
+		return
+	}
+	fmt.Fprintf(b, "Forwarded headers (public addresses only)\n")
+	b.WriteString(inner.String())
+}
+
 func writePublicIPHeader(b *strings.Builder, r *http.Request, name string) {
 	v := strings.TrimSpace(r.Header.Get(name))
 	if v == "" {
@@ -133,9 +250,17 @@ func writePublicIPHeader(b *strings.Builder, r *http.Request, name string) {
 }
 
 func writePublicXForwardedFor(b *strings.Builder, r *http.Request) {
+	parts := publicXFFList(r)
+	if len(parts) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "  X-Forwarded-For: %s\n", strings.Join(parts, ", "))
+}
+
+func publicXFFList(r *http.Request) []string {
 	v := r.Header.Get("X-Forwarded-For")
 	if v == "" {
-		return
+		return nil
 	}
 	var parts []string
 	for _, p := range strings.Split(v, ",") {
@@ -145,10 +270,7 @@ func writePublicXForwardedFor(b *strings.Builder, r *http.Request) {
 			parts = append(parts, ip.String())
 		}
 	}
-	if len(parts) == 0 {
-		return
-	}
-	fmt.Fprintf(b, "  X-Forwarded-For: %s\n", strings.Join(parts, ", "))
+	return parts
 }
 
 func formatIP(ip net.IP) string {
