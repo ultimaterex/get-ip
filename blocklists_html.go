@@ -194,7 +194,7 @@ body.page-loading footer.site {
   </nav>
   <header>
     <h1 translate="no">__PRIMARY_IP__</h1>
-    <p class="lead">HTTP prefix feeds (<code>BLOCKLIST_URLS</code>) and live DNS blocklists (<code>DNSBL_ZONES</code>). DNSBL “RTT” is resolver round-trip time per zone (milliseconds). Results are informational — follow each publisher’s terms.</p>
+    <p class="lead">Blocklist results for your IP — for reference only.</p>
   </header>
   <div class="status" id="status">Loading blocklist checks…</div>
   <div id="panels" hidden></div>
