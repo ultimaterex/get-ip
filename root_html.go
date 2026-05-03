@@ -9,6 +9,7 @@ import (
 func writeRootHTML(w http.ResponseWriter, r *http.Request, ipStr string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Link", `</json>; rel="alternate"; type="application/json"`)
 	if r.Method == http.MethodHead {
 		return
 	}
@@ -316,6 +317,25 @@ footer.site .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 
     return row('IPv4', j.ipv4) + row('IPv6', j.ipv6);
   }
 
+  function blocklistsInner(bl) {
+    if (!bl) return '';
+    var rows = [
+      row('Listed', bl.listed ? 'yes' : 'no'),
+      row('Matched', (bl.matched && bl.matched.length) ? bl.matched.join(', ') : '—'),
+      row('Sources loaded', bl.sources_loaded != null ? String(bl.sources_loaded) : ''),
+      row('Last refresh', bl.last_refresh || '')
+    ];
+    var html = rows.join('');
+    if (bl.matches && bl.matches.length) {
+      bl.matches.forEach(function (m) {
+        var label = 'Hit · ' + (m.source || '');
+        var detail = (m.ip || '') + ' ∈ ' + (m.prefix || '') + ' (' + (m.family || '') + ')';
+        html += row(label, detail);
+      });
+    }
+    return html;
+  }
+
   function parseLoc(loc) {
     if (!loc || typeof loc !== 'string') return null;
     var p = loc.split(',');
@@ -384,6 +404,7 @@ footer.site .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 
     if (fwd) html += card('Forwarded', fwd);
     html += card('Location', geoInner(j.geo));
     html += card('Network', asnInner(j.asn));
+    if (j.blocklists) html += card('Blocklists', blocklistsInner(j.blocklists));
     html += cardSpan('Request', reqInner(j.request), true);
 
     statusEl.hidden = true;

@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/ultimaterex/get-ip/internal/blocklist"
 	"github.com/ultimaterex/get-ip/internal/envload"
 	"github.com/ultimaterex/get-ip/internal/geolookup"
 )
@@ -21,6 +23,7 @@ func main() {
 	cleanupLog := configureLogOutput()
 	defer cleanupLog()
 	initGeoLite(context.Background())
+	blocklist.InitFromEnv(context.Background())
 
 	port := strings.TrimSpace(os.Getenv("PORT"))
 	if port == "" {
@@ -31,6 +34,7 @@ func main() {
 	mux.HandleFunc("/", handleRoot)
 	mux.HandleFunc("/all", handleAll)
 	mux.HandleFunc("/json", handleJSON)
+	mux.HandleFunc("/health", handleHealth)
 
 	addr := ":" + port
 	log.Printf("listening on %s", addr)
@@ -90,6 +94,8 @@ func handleAll(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(&b, "\n")
 	writeASNSection(&b, r)
 	fmt.Fprintf(&b, "\n")
+	writeBlocklistSection(&b, v4, v6)
+	fmt.Fprintf(&b, "\n")
 	fmt.Fprintf(&b, "Request\n")
 	fmt.Fprintf(&b, "  Method: %s\n", r.Method)
 	fmt.Fprintf(&b, "  Host: %s\n", r.Host)
@@ -134,6 +140,9 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 		s := v6.String()
 		resp.IPv6 = &s
 	}
+	if bl := blocklist.Lookup(v4, v6); bl != nil {
+		resp.Blocklists = buildJSONBlocklists(bl)
+	}
 
 	out, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
@@ -150,12 +159,52 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 type jsonResponse struct {
-	IPv4      *string         `json:"ipv4"`
-	IPv6      *string         `json:"ipv6"`
-	Forwarded *jsonForwarded  `json:"forwarded,omitempty"`
-	Geo       *geolookup.Geo `json:"geo,omitempty"`
-	ASN       *geolookup.ASN `json:"asn,omitempty"`
-	Request   jsonRequestMeta `json:"request"`
+	IPv4       *string          `json:"ipv4"`
+	IPv6       *string          `json:"ipv6"`
+	Forwarded  *jsonForwarded   `json:"forwarded,omitempty"`
+	Geo        *geolookup.Geo  `json:"geo,omitempty"`
+	ASN        *geolookup.ASN  `json:"asn,omitempty"`
+	Blocklists *jsonBlocklists `json:"blocklists,omitempty"`
+	Request    jsonRequestMeta `json:"request"`
+}
+
+type jsonBlocklists struct {
+	Listed        bool                 `json:"listed"`
+	Matched       []string             `json:"matched,omitempty"`
+	Matches       []jsonBlocklistMatch `json:"matches,omitempty"`
+	SourcesLoaded int                  `json:"sources_loaded"`
+	LastRefresh   *string              `json:"last_refresh,omitempty"`
+}
+
+type jsonBlocklistMatch struct {
+	Source string `json:"source"`
+	IP     string `json:"ip"`
+	Prefix string `json:"prefix"`
+	Family string `json:"family"`
+}
+
+func buildJSONBlocklists(in *blocklist.Info) *jsonBlocklists {
+	if in == nil {
+		return nil
+	}
+	out := &jsonBlocklists{
+		Listed:        in.Listed,
+		Matched:       in.Matched,
+		SourcesLoaded: in.SourcesLoaded,
+	}
+	for _, d := range in.Details {
+		out.Matches = append(out.Matches, jsonBlocklistMatch{
+			Source: d.Source,
+			IP:     d.IP,
+			Prefix: d.Prefix,
+			Family: d.Family,
+		})
+	}
+	if in.LastRefresh != nil {
+		s := in.LastRefresh.UTC().Format(time.RFC3339)
+		out.LastRefresh = &s
+	}
+	return out
 }
 
 type jsonForwarded struct {

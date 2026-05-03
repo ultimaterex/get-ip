@@ -11,6 +11,8 @@ services:
       MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}
       MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
       GEOLITE_MAX_AGE_DAYS: ${GEOLITE_MAX_AGE_DAYS:-7}
+      BLOCKLIST_URLS: ${BLOCKLIST_URLS:-}
+      BLOCKLIST_REFRESH: ${BLOCKLIST_REFRESH:-}
     volumes:
       - get-ip-data:/data
     restart: unless-stopped

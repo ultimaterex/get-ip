@@ -20,6 +20,20 @@
     "organization": "Documentation ASN example",
     "network": "203.0.113.0/24"
   },
+  "blocklists": {
+    "listed": true,
+    "matched": ["example-feed"],
+    "matches": [
+      {
+        "source": "example-feed",
+        "ip": "203.0.113.7",
+        "prefix": "203.0.113.0/24",
+        "family": "ipv4"
+      }
+    ],
+    "sources_loaded": 2,
+    "last_refresh": "2036-01-02T15:04:05Z"
+  },
   "request": {
     "method": "GET",
     "host": "preview.example",

@@ -1,6 +1,6 @@
 # get-ip
 
-Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/`** serves a **small HTML page** when the client’s **`Accept`** header includes **`text/html`** (typical browsers); the page can expand **live details** from **`/json`** and show an **OpenStreetMap** (Leaflet) pin when GeoLite provides coordinates. Non-browser clients get **plain text** (e.g. **`curl`**, scripts). **`/all`** is plain-text detail (optional estimated location + network sections); **`/json`** includes **`geo`** and **`asn`** when those MMDBs are loaded. Summaries and forwarded headers use **public** addresses only.
+Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/`** serves a **small HTML page** when the client’s **`Accept`** header includes **`text/html`** (typical browsers); the page can expand **live details** from **`/json`** and show an **OpenStreetMap** (Leaflet) pin when GeoLite provides coordinates. Non-browser clients get **plain text** (e.g. **`curl`**, scripts). **`/all`** is plain-text detail (optional estimated location + network sections); **`/json`** includes **`geo`** and **`asn`** when those MMDBs are loaded, plus optional **`blocklists`** when you configure IP deny feeds (see [Blocklist feeds](#blocklist-feeds-optional)). Summaries and forwarded headers use **public** addresses only.
 
 ## Run
 
@@ -12,7 +12,21 @@ go build -o get-ip . && ./get-ip
 
 `PORT` defaults to **8080** (e.g. `PORT=3000 go run .`).
 
+**Health:** **`GET /health`** (and **`HEAD`**) return **200** with plain text **`ok`**. The Docker image’s **`HEALTHCHECK`** uses **`/health`** on port **8080**; if you change **`PORT`**, adjust your orchestrator’s probe to match.
+
+**Discovery:** HTML on **`/`** includes **`Link: </json>; rel="alternate"; type="application/json"`** so API clients can discover the JSON view ([RFC 8288](https://www.rfc-editor.org/rfc/rfc8288)).
+
 If a **`.env`** file exists in the current working directory, it is loaded at startup (MaxMind and other variables). Values already set in the environment take precedence. **`.env`** is gitignored.
+
+## Blocklist feeds (optional)
+
+Point **`BLOCKLIST_URLS`** at one or more **HTTP(S) URLs** that serve plain-text **CIDR lists** (same general idea as Spamhaus DROP or FireHOL netsets: one network per line, **`#`** / **`;`** comments). Separate multiple URLs with **`;`**. Optionally suffix **`|tag`** for a stable label in **`/json`** (e.g. `https://www.spamhaus.org/drop/drop.txt|spamhaus-drop`). Tags default from the URL filename if omitted.
+
+On a schedule (**`BLOCKLIST_REFRESH`**, default **`24h`**), the service downloads each feed into memory and tests the visitor’s **public IPv4 and IPv6** (when present) against those prefixes. **`/json`** then includes **`blocklists`** with **`listed`**, **`matched`** (unique source tags), **`matches`** (when listed — each hit includes **`source`**, **`ip`**, **`prefix`** as the **longest matching CIDR** from that feed, and **`family`** **`ipv4`** / **`ipv6`**), plus **`sources_loaded`** and **`last_refresh`**. **`/all`** and the browser UI show the same when configured.
+
+**Licenses and acceptable use** belong to each feed’s publisher — comply with their terms and attribution (e.g. Spamhaus, FireHOL). Listings are **informational** (routing/blocklist membership), not a legal or abuse verdict.
+
+**Copy-paste presets** (Spamhaus, FireHOL level 1–3, proxies, Feodo, DShield, Compose): **[documentation/blocklist-examples.md](documentation/blocklist-examples.md)**.
 
 ## CLI: `resolve`
 
@@ -177,6 +191,8 @@ If credentials are **not** set, nothing is downloaded automatically; the app sti
 | `GEOLITE_ASN_PATH` | Path to the ASN MMDB (default `data/GeoLite2-ASN.mmdb`; Docker defaults to `/data/GeoLite2-ASN.mmdb`) |
 | `GEOLITE_MAX_AGE_DAYS` | Re-download if the file is older than this many days (default **7**) |
 | `LOG_FILE` | If set, append the same log lines the process writes to stdout (Go **`log`** package) to this file. Stdout is unchanged, so **`docker logs`** still works. Example for Compose with the default **`/data`** volume: **`LOG_FILE=/data/get-ip.log`** in **`.env`**. Leave empty or unset to disable file logging. |
+| `BLOCKLIST_URLS` | Semicolon-separated HTTP(S) URLs of CIDR blocklist feeds. Optional **`url|tag`** per [Blocklist feeds](#blocklist-feeds-optional). Empty disables the feature. |
+| `BLOCKLIST_REFRESH` | How often to re-download feeds (Go **`time.ParseDuration`**, e.g. **`24h`**, **`6h`**). Default **`24h`**. Minimum effective refresh is **1m** (invalid values fall back to **`24h`**). |
 
 **Attribution:** GeoLite2 is © MaxMind; use requires [GeoLite2 attribution](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) wherever you display this data.
 
