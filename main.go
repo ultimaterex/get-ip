@@ -10,6 +10,8 @@ import (
 )
 
 func main() {
+	log.SetOutput(os.Stdout)
+
 	port := strings.TrimSpace(os.Getenv("PORT"))
 	if port == "" {
 		port = "8080"
@@ -42,9 +44,12 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 		ip = preferredIPv6(r)
 	}
 	if ip == nil {
+		log.Printf("%s %s -> no public address", r.Method, r.URL.Path)
 		http.Error(w, "could not determine client IP", http.StatusServiceUnavailable)
 		return
 	}
+
+	log.Printf("%s %s -> %s", r.Method, r.URL.Path, ip.String())
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprint(w, ip.String())
@@ -104,6 +109,8 @@ func handleAll(w http.ResponseWriter, r *http.Request) {
 	if ua := r.Header.Get("User-Agent"); ua != "" {
 		fmt.Fprintf(&b, "  User-Agent: %s\n", ua)
 	}
+
+	log.Printf("%s %s -> v4=%s v6=%s", r.Method, r.URL.Path, formatIP(v4), formatIP(v6))
 
 	fmt.Fprint(w, b.String())
 }

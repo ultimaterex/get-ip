@@ -17,4 +17,5 @@ USER nobody
 EXPOSE 8080
 ENV PORT=8080
 
+# Request logs go to stdout — use `docker logs` / your orchestrator’s log tail.
 ENTRYPOINT ["/usr/local/bin/get-ip"]
