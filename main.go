@@ -78,24 +78,10 @@ func handleAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	remoteHost, remotePort, _ := net.SplitHostPort(r.RemoteAddr)
-	remoteIP := net.ParseIP(remoteHost)
-
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	var b strings.Builder
 	fmt.Fprintf(&b, "IPv4: %s\n", formatIP(v4))
 	fmt.Fprintf(&b, "IPv6: %s\n", formatIP(v6))
-	fmt.Fprintf(&b, "\n")
-	fmt.Fprintf(&b, "Direct connection\n")
-	if remoteIP != nil && isPublicVisitorIP(remoteIP) {
-		fmt.Fprintf(&b, "  RemoteAddr: %s\n", r.RemoteAddr)
-		fmt.Fprintf(&b, "  Parsed IP: %s\n", remoteIP.String())
-		if remotePort != "" {
-			fmt.Fprintf(&b, "  Port: %s\n", remotePort)
-		}
-	} else {
-		fmt.Fprintf(&b, "  (upstream peer address not shown)\n")
-	}
 	fmt.Fprintf(&b, "\n")
 	writePublicIPHeader(&b, r, "CF-Connecting-IP")
 	writePublicIPHeader(&b, r, "True-Client-IP")
@@ -115,10 +101,23 @@ func handleAll(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, b.String())
 }
 
-// isPublicVisitorIP reports IPs safe to show visitors: globally routable unicast (not RFC1918,
-// ULA, loopback, link-local, CGNAT, etc.). Uses net.IP.IsGlobalUnicast.
+// isPublicVisitorIP reports IPs safe to show visitors: routable on the public Internet.
+// net.IP.IsGlobalUnicast is NOT sufficient — for IPv4 it returns true even for RFC1918
+// private space (e.g. 172.22.0.1). We exclude private, loopback, link-local, and multicast.
 func isPublicVisitorIP(ip net.IP) bool {
-	return ip != nil && ip.IsGlobalUnicast()
+	if ip == nil || ip.IsUnspecified() {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsMulticast() {
+		return false
+	}
+	if ip4 := ip.To4(); ip4 != nil {
+		// RFC 6598 CGNAT — treat as non-public for consistent behavior across Go versions.
+		if ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+			return false
+		}
+	}
+	return ip.IsGlobalUnicast()
 }
 
 func writePublicIPHeader(b *strings.Builder, r *http.Request, name string) {

@@ -52,11 +52,6 @@ curl -s http://127.0.0.1:8080/all
 IPv4: 203.0.113.7
 IPv6: (none)
 
-Direct connection
-  RemoteAddr: 203.0.113.7:41290
-  Parsed IP: 203.0.113.7
-  Port: 41290
-
   X-Forwarded-For: …
   …
 
