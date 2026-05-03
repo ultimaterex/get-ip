@@ -18,6 +18,8 @@ func main() {
 	log.SetOutput(os.Stdout)
 
 	envload.DotEnv()
+	cleanupLog := configureLogOutput()
+	defer cleanupLog()
 	initGeoLite(context.Background())
 
 	port := strings.TrimSpace(os.Getenv("PORT"))

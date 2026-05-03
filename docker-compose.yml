@@ -5,6 +5,8 @@ services:
       - "${HOST_PORT:-8080}:8080"
     environment:
       PORT: "8080"
+      # Optional: duplicate console logs to the volume, e.g. LOG_FILE=/data/get-ip.log in `.env`
+      LOG_FILE: ${LOG_FILE:-}
       GEOLITE_CITY_PATH: /data/GeoLite2-City.mmdb
       GEOLITE_ASN_PATH: /data/GeoLite2-ASN.mmdb
       MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}

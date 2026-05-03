@@ -26,4 +26,5 @@ ENV GEOLITE_CITY_PATH=/data/GeoLite2-City.mmdb
 ENV GEOLITE_ASN_PATH=/data/GeoLite2-ASN.mmdb
 
 # Request logs go to stdout — use `docker logs` / your orchestrator’s log tail.
+# Optional: set LOG_FILE (e.g. /data/get-ip.log) to append the same lines to a file; see README.
 ENTRYPOINT ["/usr/local/bin/get-ip"]

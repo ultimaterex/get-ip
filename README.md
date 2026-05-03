@@ -146,7 +146,7 @@ docker run --rm -p 8080:8080 \
 
 Mount **`/data`** so the downloaded MMDB survives container restarts (`GEOLITE_CITY_PATH` defaults to **`/data/GeoLite2-City.mmdb`** in the image).
 
-**Compose** — `docker-compose.yml` (build) and `docker-compose.ghcr.yml` (pull from GHCR) already configure **`GEOLITE_CITY_PATH`** / **`GEOLITE_ASN_PATH`** under **`/data`**, a **`get-ip-data`** volume mounted at **`/data`**, and pass **`MAXMIND_ACCOUNT_ID`**, **`MAXMIND_LICENSE_KEY`**, and **`GEOLITE_MAX_AGE_DAYS`** via `${VAR:-…}` substitution.
+**Compose** — `docker-compose.yml` (build) and `docker-compose.ghcr.yml` (pull from GHCR) already configure **`GEOLITE_CITY_PATH`** / **`GEOLITE_ASN_PATH`** under **`/data`**, a **`get-ip-data`** volume mounted at **`/data`**, and pass **`MAXMIND_ACCOUNT_ID`**, **`MAXMIND_LICENSE_KEY`**, **`GEOLITE_MAX_AGE_DAYS`**, and optional **`LOG_FILE`** via `${VAR:-…}` substitution.
 
 Copy **`.env.example`** to **`.env`** next to the compose file (do not commit real keys). Compose loads **`.env`** automatically for that substitution.
 
@@ -174,6 +174,7 @@ If credentials are **not** set, nothing is downloaded automatically; the app sti
 | `GEOLITE_CITY_PATH` | Path to the City MMDB (default `data/GeoLite2-City.mmdb`; Docker defaults to `/data/GeoLite2-City.mmdb`) |
 | `GEOLITE_ASN_PATH` | Path to the ASN MMDB (default `data/GeoLite2-ASN.mmdb`; Docker defaults to `/data/GeoLite2-ASN.mmdb`) |
 | `GEOLITE_MAX_AGE_DAYS` | Re-download if the file is older than this many days (default **7**) |
+| `LOG_FILE` | If set, append the same log lines the process writes to stdout (Go **`log`** package) to this file. Stdout is unchanged, so **`docker logs`** still works. Example for Compose with the default **`/data`** volume: **`LOG_FILE=/data/get-ip.log`** in **`.env`**. Leave empty or unset to disable file logging. |
 
 **Attribution:** GeoLite2 is © MaxMind; use requires [GeoLite2 attribution](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) wherever you display this data.
 
