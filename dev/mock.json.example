@@ -1,0 +1,29 @@
+{
+  "ipv4": "203.0.113.7",
+  "ipv6": null,
+  "forwarded": {
+    "x_forwarded_for": ["203.0.113.7"]
+  },
+  "geo": {
+    "city": "Example City",
+    "region": "Example Region",
+    "region_iso": "EX",
+    "country": "ZZ",
+    "country_name": "Exampleland",
+    "continent": "Example Continent",
+    "continent_code": "XC",
+    "loc": "45.50884,-73.58781",
+    "timezone": "America/Toronto"
+  },
+  "asn": {
+    "asn": 64496,
+    "organization": "Documentation ASN example",
+    "network": "203.0.113.0/24"
+  },
+  "request": {
+    "method": "GET",
+    "host": "preview.example",
+    "protocol": "HTTP/1.1",
+    "user_agent": "Mozilla/5.0 (compatible; HTML preview)"
+  }
+}

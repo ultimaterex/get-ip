@@ -1,6 +1,6 @@
 # get-ip
 
-Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/`** serves a **small HTML page** when the client’s **`Accept`** header includes **`text/html`** (typical browsers); otherwise it returns **plain text** (e.g. **`curl`**, scripts). **`/all`** is plain-text detail (optional estimated location + network sections); **`/json`** includes **`geo`** and **`asn`** when those MMDBs are loaded. Summaries and forwarded headers use **public** addresses only.
+Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/`** serves a **small HTML page** when the client’s **`Accept`** header includes **`text/html`** (typical browsers); the page can expand **live details** from **`/json`** and show an **OpenStreetMap** (Leaflet) pin when GeoLite provides coordinates. Non-browser clients get **plain text** (e.g. **`curl`**, scripts). **`/all`** is plain-text detail (optional estimated location + network sections); **`/json`** includes **`geo`** and **`asn`** when those MMDBs are loaded. Summaries and forwarded headers use **public** addresses only.
 
 ## Run
 
@@ -50,6 +50,8 @@ curl -s http://127.0.0.1:8080/
 ```
 
 Open **`/`** in a normal browser tab to see the lightweight HTML view (same IP, links to **`/all`** and **`/json`**).
+
+Offline mock preview (HTML file + **`python dev/gen_preview.py`**): **[documentation/browser-preview.md](documentation/browser-preview.md)**.
 
 ```bash
 # details

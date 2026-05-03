@@ -26,3 +26,7 @@ go.work.sum
 
 # MaxMind GeoLite database (auto-downloaded when configured)
 data/
+
+# Local browser preview (generated; optional private mock)
+dev/mock.json
+dev/preview.html
