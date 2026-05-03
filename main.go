@@ -60,6 +60,11 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("%s %s -> %s", r.Method, r.URL.Path, ip.String())
 
+	if prefersHTML(r) {
+		writeRootHTML(w, r, ip.String())
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprint(w, ip.String())
 }
