@@ -25,6 +25,13 @@ docker run --rm -p 8080:8080 get-ip
 docker compose up -d --build
 ```
 
+**Compose from GHCR** (image built in CI)
+
+```bash
+docker compose -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
 ## Examples
 
 ```bash
