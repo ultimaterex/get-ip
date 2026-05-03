@@ -67,3 +67,7 @@ Request
 ```
 
 Behind a reverse proxy, set `X-Forwarded-For` / `X-Real-IP` (or your provider’s equivalent) so the app sees the real client.
+
+## Caddy and plain `curl`
+
+`curl ip.example.tld` uses **HTTP** (port 80) first. If the proxy only answers with an **HTTP→HTTPS redirect**, `curl` without **`-L`** will not follow it, so the response body can look empty. **Serve the app on both `http://` and `https://`** for the same host (see `Caddyfile.example`) so port 80 returns the same text as HTTPS. Browsers will still use HTTPS if you link or type `https://`, or you can add HSTS later if you want to push encryption only.
