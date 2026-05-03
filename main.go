@@ -147,7 +147,7 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 	if bl := blocklist.Lookup(v4, v6); bl != nil {
 		resp.Blocklists = buildJSONBlocklists(bl)
 	}
-	if d := dnsbl.Lookup(r.Context(), v4); d != nil {
+	if d := dnsbl.Lookup(r.Context(), dnsblClientKey(r), v4); d != nil {
 		resp.DNSBL = d
 	}
 
@@ -227,6 +227,22 @@ type jsonRequestMeta struct {
 	Host      string `json:"host"`
 	Protocol  string `json:"protocol"`
 	UserAgent string `json:"user_agent,omitempty"`
+}
+
+// dnsblClientKey identifies the visitor for DNSBL per-client rate limits (public IP, else TCP remote).
+func dnsblClientKey(r *http.Request) string {
+	v4, v6 := publicIPv4IPv6(r)
+	if v4 != nil {
+		return "4:" + v4.String()
+	}
+	if v6 != nil {
+		return "6:" + v6.String()
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return "raw:" + strings.TrimSpace(r.RemoteAddr)
+	}
+	return "ra:" + host
 }
 
 func publicIPv4IPv6(r *http.Request) (v4, v6 net.IP) {

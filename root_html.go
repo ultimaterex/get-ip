@@ -338,16 +338,23 @@ footer.site .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 
 
   function dnsblInner(d) {
     if (!d) return '';
+    if (!d.eligible && (d.rate_limited || d.skipped_reason === 'rate_limited')) {
+      return row('Status', 'Rate limited — too many fresh DNSBL lookups from this client. Retry later or adjust server limits.');
+    }
     if (!d.eligible) {
       return row('Note', d.skipped_reason === 'no_public_ipv4'
         ? 'No public IPv4 — most DNSBLs are IPv4-only.'
         : (d.skipped_reason || 'skipped'));
     }
-    var parts = [
+    var parts = [];
+    if (d.cached) {
+      parts.push(row('Result', 'From cache' + (d.cache_expires ? ' · expires ' + d.cache_expires : '')));
+    }
+    parts.push(
       row('IPv4 checked', d.ipv4 || ''),
       row('Zones', d.zones_checked != null ? String(d.zones_checked) : ''),
       row('Listed (any)', d.listed ? 'yes' : 'no')
-    ];
+    );
     if (d.checks && d.checks.length) {
       d.checks.forEach(function (c) {
         var label = (c.source || c.zone || 'zone');

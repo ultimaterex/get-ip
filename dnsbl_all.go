@@ -15,15 +15,22 @@ func writeDNSBLSection(b *strings.Builder, r *http.Request, v4 net.IP) {
 	if r != nil {
 		ctx = r.Context()
 	}
-	inf := dnsbl.Lookup(ctx, v4)
+	k := ""
+	if r != nil {
+		k = dnsblClientKey(r)
+	}
+	inf := dnsbl.Lookup(ctx, k, v4)
 	if inf == nil {
 		return
 	}
 	fmt.Fprintf(b, "DNS blocklists (DNSBL)\n")
 	fmt.Fprintf(b, "  Zones configured: %d\n", inf.ZonesChecked)
 	if !inf.Eligible {
-		fmt.Fprintf(b, "  Skipped: %s\n", dnsblSkippedHuman(inf.SkippedReason))
+		fmt.Fprintf(b, "  Skipped: %s\n", dnsblSkippedHuman(inf))
 		return
+	}
+	if inf.Cached && inf.CacheExpiresRFC != "" {
+		fmt.Fprintf(b, "  Cached until: %s\n", inf.CacheExpiresRFC)
 	}
 	fmt.Fprintf(b, "  IPv4 checked: %s\n", inf.IPv4)
 	if inf.Listed {
@@ -44,13 +51,16 @@ func writeDNSBLSection(b *strings.Builder, r *http.Request, v4 net.IP) {
 	}
 }
 
-func dnsblSkippedHuman(reason string) string {
-	switch reason {
+func dnsblSkippedHuman(inf *dnsbl.Info) string {
+	if inf.RateLimited || inf.SkippedReason == "rate_limited" {
+		return "rate limited (too many fresh DNSBL lookups — wait or raise DNSBL_CLIENT_MAX / DNSBL_GLOBAL_MAX_PER_MINUTE)"
+	}
+	switch inf.SkippedReason {
 	case "no_public_ipv4":
 		return "no public IPv4 (most DNSBLs are IPv4-only)"
 	case "invalid_ipv4":
 		return "invalid IPv4"
 	default:
-		return reason
+		return inf.SkippedReason
 	}
 }

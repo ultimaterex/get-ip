@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,9 +18,14 @@ import (
 )
 
 const (
-	defaultPerQuery   = 3 * time.Second
-	defaultDeadline   = 25 * time.Second
-	defaultConcurrent = 12
+	defaultPerQuery        = 3 * time.Second
+	defaultDeadline        = 25 * time.Second
+	defaultConcurrent      = 12
+	defaultCacheTTL        = 15 * time.Minute
+	defaultClientMax       = 30  // fresh lookups per client key per window
+	defaultClientWindow    = time.Hour
+	defaultGlobalPerMinute = 120
+	defaultMaxClientRLKeys = 20000
 )
 
 // Check is one zone result against the visitor IPv4 address.
@@ -34,22 +40,36 @@ type Check struct {
 
 // Info is returned when DNSBL is configured (even if the client has no IPv4 to check).
 type Info struct {
-	Eligible      bool   `json:"eligible"`
-	SkippedReason string `json:"skipped_reason,omitempty"`
-	IPv4          string `json:"ipv4,omitempty"`
-	ZonesChecked  int    `json:"zones_checked"`
-	Listed        bool   `json:"listed"`
-	Checks        []Check `json:"checks,omitempty"`
+	Eligible      bool    `json:"eligible"`
+	SkippedReason   string  `json:"skipped_reason,omitempty"`
+	IPv4            string  `json:"ipv4,omitempty"`
+	ZonesChecked    int     `json:"zones_checked"`
+	Listed          bool    `json:"listed"`
+	Checks          []Check `json:"checks,omitempty"`
+	Cached          bool    `json:"cached,omitempty"`
+	CacheExpiresRFC string  `json:"cache_expires,omitempty"`
+	RateLimited     bool    `json:"rate_limited,omitempty"`
 }
 
 var (
-	mu       sync.RWMutex
-	enabled  bool
-	specs    []zoneSpec
+	mu      sync.RWMutex
+	enabled bool
+	specs   []zoneSpec
 	perQuery time.Duration
 	deadline time.Duration
 	workers  int
+
+	cacheTTL        time.Duration
+	dnsblCache      sync.Map // subject IPv4 string -> cacheEntry
+	clientLimiter   *clientWindows
+	globalLimiter   minuteCounter
+	maxClientRLKeys int
 )
+
+type cacheEntry struct {
+	info    *Info
+	expires time.Time
+}
 
 type zoneSpec struct {
 	zone string
@@ -63,62 +83,104 @@ func InitFromEnv() {
 	specs = parseZones(strings.TrimSpace(os.Getenv("DNSBL_ZONES")))
 	perQuery = durationEnv("DNSBL_PER_QUERY", defaultPerQuery)
 	deadline = durationEnv("DNSBL_DEADLINE", defaultDeadline)
-	workers = intEnv("DNSBL_CONCURRENCY", defaultConcurrent)
+	workers = intEnvWorkers("DNSBL_CONCURRENCY", defaultConcurrent)
 	if workers < 1 {
 		workers = 1
 	}
+
+	cacheTTL = durationEnvAllowZero("DNSBL_CACHE_TTL", defaultCacheTTL)
+	clientMax := intEnvGE0("DNSBL_CLIENT_MAX", defaultClientMax)
+	clientWin := durationEnv("DNSBL_CLIENT_WINDOW", defaultClientWindow)
+	globalPerMin := intEnvGE0("DNSBL_GLOBAL_MAX_PER_MINUTE", defaultGlobalPerMinute)
+	maxClientRLKeys = intEnvGE0("DNSBL_RL_MAX_CLIENT_KEYS", defaultMaxClientRLKeys)
+	if maxClientRLKeys == 0 {
+		maxClientRLKeys = defaultMaxClientRLKeys
+	}
+
+	clientLimiter = &clientWindows{
+		window: clientWin,
+		max:    clientMax,
+	}
+	globalLimiter.perMinute = globalPerMin
+
 	enabled = len(specs) > 0
 	if enabled {
-		log.Printf("dnsbl: enabled (%d zones, per_query=%v deadline=%v concurrency=%d)", len(specs), perQuery, deadline, workers)
+		log.Printf("dnsbl: enabled (%d zones, per_query=%v deadline=%v concurrency=%d cache_ttl=%v client_max=%d/%v global_per_min=%d)",
+			len(specs), perQuery, deadline, workers, cacheTTL, clientMax, clientWin, globalPerMin)
 	}
 }
 
-func durationEnv(key string, def time.Duration) time.Duration {
+func durationEnvAllowZero(key string, def time.Duration) time.Duration {
 	s := strings.TrimSpace(os.Getenv(key))
 	if s == "" {
 		return def
 	}
 	d, err := time.ParseDuration(s)
-	if err != nil || d < 100*time.Millisecond {
+	if err != nil {
 		log.Printf("dnsbl: invalid %s=%q, using %v", key, s, def)
 		return def
 	}
 	return d
 }
 
-func intEnv(key string, def int) int {
+func durationEnv(key string, def time.Duration) time.Duration {
+	d := durationEnvAllowZero(key, def)
+	if d < 100*time.Millisecond {
+		log.Printf("dnsbl: %s too small, using %v", key, def)
+		return def
+	}
+	return d
+}
+
+func intEnvWorkers(key string, def int) int {
+	return intEnvRange(key, def, 1, 256)
+}
+
+func intEnvGE0(key string, def int) int {
 	s := strings.TrimSpace(os.Getenv(key))
 	if s == "" {
 		return def
 	}
-	var n int
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			log.Printf("dnsbl: invalid %s=%q, using %d", key, s, def)
-			return def
-		}
-		n = n*10 + int(r-'0')
-	}
-	if n < 1 || n > 256 {
-		log.Printf("dnsbl: %s=%d out of range, using %d", key, n, def)
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		log.Printf("dnsbl: invalid %s=%q, using %d", key, s, def)
 		return def
 	}
 	return n
 }
 
-// Lookup tests visitor IPv4 against configured zones. Returns nil if DNSBL is not configured.
-func Lookup(ctx context.Context, v4 net.IP) *Info {
+func intEnvRange(key string, def, min, max int) int {
+	s := strings.TrimSpace(os.Getenv(key))
+	if s == "" {
+		return def
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < min || n > max {
+		log.Printf("dnsbl: invalid %s=%q, using %d", key, s, def)
+		return def
+	}
+	return n
+}
+
+// Lookup tests subject IPv4 against configured zones. clientKey identifies the caller for
+// per-client rate limits (use the visitor’s public IP key from the HTTP request).
+// Returns nil if DNSBL is not configured.
+func Lookup(ctx context.Context, clientKey string, v4 net.IP) *Info {
 	mu.RLock()
 	defer mu.RUnlock()
 	if !enabled {
 		return nil
 	}
 	zn := len(specs)
+	if clientKey == "" {
+		clientKey = "unknown"
+	}
+
 	if v4 == nil || v4.To4() == nil {
 		return &Info{
 			Eligible:      false,
-			SkippedReason:   "no_public_ipv4",
-			ZonesChecked:    zn,
+			SkippedReason: "no_public_ipv4",
+			ZonesChecked:  zn,
 			Listed:        false,
 			Checks:        nil,
 		}
@@ -127,6 +189,28 @@ func Lookup(ctx context.Context, v4 net.IP) *Info {
 	reversed := reverseIPv4(ip4)
 	if reversed == "" {
 		return &Info{Eligible: false, SkippedReason: "invalid_ipv4", ZonesChecked: zn}
+	}
+	subject := ip4.String()
+
+	if cacheTTL > 0 {
+		if inf, exp, ok := loadCache(subject); ok {
+			out := *inf
+			out.Cached = true
+			if !exp.IsZero() {
+				out.CacheExpiresRFC = exp.UTC().Format(time.RFC3339)
+			}
+			return &out
+		}
+	}
+
+	now := time.Now()
+	if !globalLimiter.allow(now) {
+		log.Printf("dnsbl: global rate limit exceeded (DNSBL_GLOBAL_MAX_PER_MINUTE=%d)", globalLimiter.perMinute)
+		return rateLimitedOut(zn)
+	}
+	if clientLimiter != nil && !clientLimiter.allow(clientKey, now) {
+		log.Printf("dnsbl: client rate limit exceeded (key=%s DNSBL_CLIENT_MAX=%d per %v)", clientKey, clientLimiter.max, clientLimiter.window)
+		return rateLimitedOut(zn)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, deadline)
@@ -191,13 +275,47 @@ func Lookup(ctx context.Context, v4 net.IP) *Info {
 			break
 		}
 	}
-	return &Info{
+	out := &Info{
 		Eligible:     true,
-		IPv4:         ip4.String(),
+		IPv4:         subject,
 		ZonesChecked: zn,
 		Listed:       listed,
 		Checks:       res,
 	}
+	if cacheTTL > 0 {
+		storeCache(subject, out, now.Add(cacheTTL))
+	}
+	return out
+}
+
+func rateLimitedOut(zn int) *Info {
+	return &Info{
+		Eligible:      false,
+		SkippedReason: "rate_limited",
+		ZonesChecked:  zn,
+		RateLimited:   true,
+	}
+}
+
+func loadCache(subject string) (*Info, time.Time, bool) {
+	v, ok := dnsblCache.Load(subject)
+	if !ok {
+		return nil, time.Time{}, false
+	}
+	e := v.(cacheEntry)
+	if time.Now().After(e.expires) {
+		dnsblCache.Delete(subject)
+		return nil, time.Time{}, false
+	}
+	return e.info, e.expires, true
+}
+
+func storeCache(subject string, inf *Info, exp time.Time) {
+	cp := *inf
+	cp.Cached = false
+	cp.CacheExpiresRFC = ""
+	cp.RateLimited = false
+	dnsblCache.Store(subject, cacheEntry{info: &cp, expires: exp})
 }
 
 func trimErr(err error) string {

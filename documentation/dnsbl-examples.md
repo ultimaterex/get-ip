@@ -17,6 +17,13 @@ This is **not** the same as [`BLOCKLIST_URLS`](./blocklist-examples.md) (HTTP CI
 | `DNSBL_PER_QUERY` | `3s` | Timeout per zone |
 | `DNSBL_DEADLINE` | `25s` | Cap for one `/json` request |
 | `DNSBL_CONCURRENCY` | `12` | Parallel lookups |
+| `DNSBL_CACHE_TTL` | `15m` | Per–subject-IPv4 result cache (set `0` to disable) |
+| `DNSBL_CLIENT_MAX` | `30` | Max **fresh** DNSBL runs per visitor per `DNSBL_CLIENT_WINDOW` (set `0` to disable) |
+| `DNSBL_CLIENT_WINDOW` | `1h` | Sliding window for the per-client cap |
+| `DNSBL_GLOBAL_MAX_PER_MINUTE` | `120` | Max **fresh** runs per UTC **minute** for the whole process (set `0` to disable) |
+| `DNSBL_RL_MAX_CLIENT_KEYS` | `20000` | Truncate the per-client map if it grows past this size |
+
+**Cache vs rate limits:** a **cache hit** (same **subject IPv4** within **`DNSBL_CACHE_TTL`**) returns the previous result and **does not** run DNS or count against the per-client / global limits. Only **cache misses** that perform a full zone fan-out are limited.
 
 ---
 

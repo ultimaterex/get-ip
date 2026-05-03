@@ -46,6 +46,8 @@ The service queries **`{reversed-ipv4}.{zone}`** for each zone and treats **`127
 
 **Operational note:** each publisher sets **rate limits and acceptable use**. Prefer short zone lists, sensible **`DNSBL_DEADLINE`** / **`DNSBL_PER_QUERY`**, and compliance with provider policies.
 
+**Abuse controls:** results for a given **subject IPv4** are **cached** (see **`DNSBL_CACHE_TTL`**). **Fresh** DNS fan-out is also **rate-limited** per visitor and globally so one client cannot burn your resolver or third-party DNSBLs. **Cache hits** do not consume those limits.
+
 **Copy-paste zone lists** (starter + longer options): **[documentation/dnsbl-examples.md](documentation/dnsbl-examples.md)**.
 
 ## CLI: `resolve`
@@ -217,6 +219,11 @@ If credentials are **not** set, nothing is downloaded automatically; the app sti
 | `DNSBL_PER_QUERY` | Per-zone DNS timeout (Go duration, default **`3s`**). |
 | `DNSBL_DEADLINE` | Overall deadline for all zones in one request (default **`25s`**). |
 | `DNSBL_CONCURRENCY` | Parallel DNS lookups (default **`12`**, max **256**). |
+| `DNSBL_CACHE_TTL` | Cache DNSBL **`Info`** per subject IPv4 (Go duration). Default **`15m`**. Set **`0`** to disable caching. |
+| `DNSBL_CLIENT_MAX` | Max **fresh** DNSBL runs per visitor key per **`DNSBL_CLIENT_WINDOW`** (default **`30`** per **`1h`**). Set **`0`** to disable this limit. **Cache hits do not count.** |
+| `DNSBL_CLIENT_WINDOW` | Sliding window for **`DNSBL_CLIENT_MAX`** (Go duration, default **`1h`**). |
+| `DNSBL_GLOBAL_MAX_PER_MINUTE` | Max **fresh** DNSBL runs per **UTC minute** for the whole process (default **`120`**). Set **`0`** to disable. **Cache hits do not count.** |
+| `DNSBL_RL_MAX_CLIENT_KEYS` | When the per-client map grows past this many keys, half the entries are dropped (default **20000**). |
 
 **Attribution:** GeoLite2 is © MaxMind; use requires [GeoLite2 attribution](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) wherever you display this data.
 
