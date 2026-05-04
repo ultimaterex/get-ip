@@ -46,6 +46,8 @@ def write_root_preview() -> None:
         "<title>Your IP · mock preview</title>\n" + mock,
     )
     html = html.replace("__PRIMARY_IP__", primary)
+    html = html.replace("__GETIP_DUAL_V4_URL__", json.dumps(""))
+    html = html.replace("__GETIP_DUAL_V6_URL__", json.dumps(""))
     banner = (
         "<!-- Mock preview: see documentation/browser-preview.md | regenerate: python dev/gen_preview.py -->\n"
     )

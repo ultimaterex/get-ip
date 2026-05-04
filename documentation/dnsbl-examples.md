@@ -1,6 +1,6 @@
 # DNSBL zone examples (`DNSBL_ZONES`)
 
-These are **DNS zone suffixes** for classic IPv4 DNSBL queries: the server looks up `**{reversed-ipv4}.{zone}`** and treats `**127.0.0.0/8**` answers as “listed”.
+These are **DNS zone suffixes** for classic IPv4 DNSBL queries: the server looks up `**{reversed-ipv4}.{zone}`** and treats `**127.0.0.0/8`** answers as “listed”.
 
 This is **not** the same as `[BLOCKLIST_URLS](./blocklist-examples.md)` (HTTP CIDR downloads). You can use **either or both**.
 
@@ -14,7 +14,7 @@ This is **not** the same as `[BLOCKLIST_URLS](./blocklist-examples.md)` (HTTP CI
 
 | Variable                      | Default   | Meaning                                                                             |
 | ----------------------------- | --------- | ----------------------------------------------------------------------------------- |
-| `DNSBL_ZONES`                 | *(empty)* | `;`-separated zones, optional `zone|tag`                                            |
+| `DNSBL_ZONES`                 | *(empty)* | `;`-separated zones, optional `zone                                                 |
 | `DNSBL_PER_QUERY`             | `3s`      | Timeout per zone                                                                    |
 | `DNSBL_DEADLINE`              | `25s`     | Cap for one `/json` request                                                         |
 | `DNSBL_CONCURRENCY`           | `12`      | Parallel lookups                                                                    |
@@ -71,7 +71,7 @@ Tune `**DNSBL_DEADLINE**` upward if you configure many zones (e.g. `**45s**`) or
 
 ## Largest practical IPv4 preset (public zones only)
 
-This is a **large** set of **independently operated** DNSBL zones suitable for classic `**{reversed-ipv4}.{zone}`** queries. It is meant for **coverage**, not minimal redundancy: several Spamhaus-related zones overlap conceptually (you may drop `**zen`** if you keep `**sbl`/`xbl`/`pbl**`, or keep `**zen**` only to save queries).
+This is a **large** set of **independently operated** DNSBL zones suitable for classic `**{reversed-ipv4}.{zone}`** queries. It is meant for **coverage**, not minimal redundancy: several Spamhaus-related zones overlap conceptually (you may drop `**zen`** if you keep `**sbl`/`xbl`/`pbl`**, or keep `**zen**` only to save queries).
 
 **Not included on purpose**
 
@@ -98,7 +98,7 @@ DNSBL_CONCURRENCY=24
 DNSBL_ZONES="zen.spamhaus.org;sbl.spamhaus.org;xbl.spamhaus.org;pbl.spamhaus.org;cbl.abuseat.org;b.barracudacentral.org;bl.spamcop.net;psbl.surriel.com;ips.backscatterer.org;dnsbl-1.uceprotect.net;dnsbl-2.uceprotect.net;dnsbl-3.uceprotect.net;dnsbl.dronebl.org;bl.mailspike.net;z.mailspike.net;rep.mailspike.net;ix.dnsbl.manitu.net;dnsbl.nixspam.de;bl.blocklist.de;tor.dan.me.uk;torexit.dan.me.uk;phishing.rbl.msrbl.net;spam.rbl.msrbl.net;virus.rbl.msrbl.net;images.rbl.msrbl.net;combined.rbl.msrbl.net;dnsbl.spfbl.net;dnsbl.zapbl.net;all.s5h.net;rbl.interserver.net;rblspamassassin.interserver.net;rbl.efnetrbl.org;bl.suomispam.net;gl.suomispam.net;truncate.gbudb.net;ubl.unsubscore.com"
 ```
 
-Expect **some errors/timeouts** on individual zones (maintenance, rate limits, or resolver policies). That is normal — inspect `**checks[].error`** in `**/json**`.
+Expect **some errors/timeouts** on individual zones (maintenance, rate limits, or resolver policies). That is normal — inspect `**checks[].error`** in `**/json`**.
 
 ---
 
@@ -118,5 +118,5 @@ When `DNSBL_ZONES` is non-empty, responses include `**dnsbl**`:
 
 - `**eligible**` — whether a public IPv4 was checked.
 - `**listed**` — true if **any** zone returned a `127.0.0.0/8` answer.
-- `**checks`** — per-zone `**listed**`, `**return_codes**`, `**response_ms**`, `**error**` (if the lookup failed).
+- `**checks`** — per-zone `**listed`**, `**return_codes**`, `**response_ms**`, `**error**` (if the lookup failed).
 

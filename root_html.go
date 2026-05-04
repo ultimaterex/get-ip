@@ -3,6 +3,8 @@ package main
 import (
 	"html"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 )
 
@@ -11,12 +13,18 @@ func writeRootHTML(w http.ResponseWriter, r *http.Request, ipStr string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Link", `</json>; rel="alternate"; type="application/json"`)
 	w.Header().Add("Link", `</blocklists/json>; rel="alternate"; type="application/json"`)
+	w.Header().Add("Link", `</ipv4/json>; rel="alternate"; type="application/json"`)
+	w.Header().Add("Link", `</ipv6/json>; rel="alternate"; type="application/json"`)
 	if r.Method == http.MethodHead {
 		return
 	}
 
 	esc := html.EscapeString(ipStr)
 	out := strings.ReplaceAll(rootHTMLTemplate, "__PRIMARY_IP__", esc)
+	v4u := strings.TrimSpace(os.Getenv("GET_IP_DUAL_FETCH_IPV4_JSON_URL"))
+	v6u := strings.TrimSpace(os.Getenv("GET_IP_DUAL_FETCH_IPV6_JSON_URL"))
+	out = strings.ReplaceAll(out, "__GETIP_DUAL_V4_URL__", strconv.Quote(v4u))
+	out = strings.ReplaceAll(out, "__GETIP_DUAL_V6_URL__", strconv.Quote(v6u))
 	_, _ = w.Write([]byte(out))
 }
 
@@ -279,6 +287,7 @@ body.page-loading footer.site {
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
 <script>
 (function () {
+  var DUAL_JSON_URLS = { v4: __GETIP_DUAL_V4_URL__, v6: __GETIP_DUAL_V6_URL__ };
   var statusEl = document.getElementById('status');
   var cardsEl = document.getElementById('cards');
   var heroIpEl = document.getElementById('hero-ip');
@@ -379,8 +388,15 @@ body.page-loading footer.site {
   }
 
   function setPrimaryIP(j) {
-    var ip = j.ipv4 || j.ipv6 || (heroIpEl.textContent || '').trim();
-    if (ip) heroIpEl.textContent = ip;
+    var parts = [];
+    if (j.ipv4) parts.push(j.ipv4);
+    if (j.ipv6) parts.push(j.ipv6);
+    if (parts.length) {
+      heroIpEl.innerHTML = parts.map(function (p) { return esc(p); }).join('<br>');
+      return;
+    }
+    var fallback = (heroIpEl.textContent || '').trim();
+    if (fallback) heroIpEl.textContent = fallback;
   }
 
   function renderMap(lat, lng) {
@@ -446,7 +462,49 @@ body.page-loading footer.site {
     renderPlaceholderMap('Load /json to see the map here.');
   }
 
+  function mergeDual(j4, j6) {
+    return {
+      ipv4: (j4 && j4.ipv4) || (j6 && j6.ipv4) || null,
+      ipv6: (j6 && j6.ipv6) || (j4 && j4.ipv6) || null,
+      forwarded: (j4 && j4.forwarded) || (j6 && j6.forwarded),
+      geo: (j4 && j4.geo) || (j6 && j6.geo),
+      asn: (j4 && j4.asn) || (j6 && j6.asn),
+      request: (j4 && j4.request) || (j6 && j6.request)
+    };
+  }
+
+  function fetchJSONAbs(url) {
+    return fetch(url, { credentials: 'omit', mode: 'cors', headers: { Accept: 'application/json' } })
+      .then(function (r) {
+        if (!r.ok) throw new Error(url + ': HTTP ' + r.status);
+        return r.json();
+      });
+  }
+
   function runFetch() {
+    var v4 = DUAL_JSON_URLS.v4;
+    var v6 = DUAL_JSON_URLS.v6;
+    if (v4 && v6) {
+      Promise.allSettled([fetchJSONAbs(v4), fetchJSONAbs(v6)])
+        .then(function (results) {
+          var j4 = results[0].status === 'fulfilled' ? results[0].value : null;
+          var j6 = results[1].status === 'fulfilled' ? results[1].value : null;
+          if (j4 || j6) {
+            renderPage(mergeDual(j4, j6));
+            return;
+          }
+          return fetch('/json', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+            .then(function (r) {
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              return r.json();
+            })
+            .then(renderPage);
+        })
+        .catch(function (e) {
+          fail('Could not load JSON: ' + e.message);
+        });
+      return;
+    }
     fetch('/json', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);

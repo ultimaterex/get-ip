@@ -6,6 +6,8 @@ services:
     environment:
       PORT: "8080"
       LOG_FILE: ${LOG_FILE:-}
+      # Optional: set to 1/true for GET /debug and /debug/json (troubleshooting); leave unset in production
+      GET_IP_DEBUG_HTTP: ${GET_IP_DEBUG_HTTP:-}
       GEOLITE_CITY_PATH: /data/GeoLite2-City.mmdb
       GEOLITE_ASN_PATH: /data/GeoLite2-ASN.mmdb
       MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}

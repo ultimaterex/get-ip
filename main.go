@@ -35,6 +35,10 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleRoot)
 	mux.HandleFunc("/all", handleAll)
+	mux.HandleFunc("/ipv4/json", handleFamilyJSON)
+	mux.HandleFunc("/ipv6/json", handleFamilyJSON)
+	mux.HandleFunc("/ipv4", handleIPv4Text)
+	mux.HandleFunc("/ipv6", handleIPv6Text)
 	mux.HandleFunc("/json", handleJSON)
 	mux.HandleFunc("/blocklists/json", handleBlocklistsJSON)
 	mux.HandleFunc("/blocklists/all", handleBlocklistsAll)
@@ -124,6 +128,10 @@ func handleAll(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleJSON(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		handleJSONCORSOptions(w, r)
+		return
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -146,7 +154,12 @@ func handleJSON(w http.ResponseWriter, r *http.Request) {
 	v4, v6 := publicIPv4IPv6(r)
 	log.Printf("%s %s -> v4=%s v6=%s", r.Method, r.URL.Path, formatIP(v4), formatIP(v6))
 
+	applyJSONCORS(w)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method == http.MethodHead {
+		return
+	}
 	w.Write(out)
 	w.Write([]byte("\n"))
 }
@@ -162,6 +175,10 @@ func legacyRedirect(to string) http.HandlerFunc {
 }
 
 func handleBlocklistsJSON(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		handleJSONCORSOptions(w, r)
+		return
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -182,7 +199,12 @@ func handleBlocklistsJSON(w http.ResponseWriter, r *http.Request) {
 	v4, v6 := publicIPv4IPv6(r)
 	log.Printf("%s %s -> v4=%s v6=%s", r.Method, r.URL.Path, formatIP(v4), formatIP(v6))
 
+	applyJSONCORS(w)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method == http.MethodHead {
+		return
+	}
 	w.Write(out)
 	w.Write([]byte("\n"))
 }

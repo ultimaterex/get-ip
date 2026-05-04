@@ -1,6 +1,6 @@
 # get-ip
 
-Tiny HTTP service that echoes the caller’s IP: IPv4 when possible, otherwise IPv6. **`/`** serves a **small HTML page** when the client’s **`Accept`** header includes **`text/html`** (typical browsers); the page loads **live details** from **`/json`** (geo, ASN, forwarded headers, map). Non-browser clients get **plain text** (e.g. **`curl`**, scripts). **`/all`** is plain-text detail (optional estimated location + network); **`/json`** includes **`geo`** and **`asn`** when those MMDBs are loaded. Optional **HTTP prefix blocklists** and **DNSBL** live on **`/blocklists`** (HTML), **`/blocklists/json`**, and **`/blocklists/all`** — see [Blocklists](#blocklists). Summaries and forwarded headers use **public** addresses only.
+Self-hosted **self-serve “what is my IP”** HTTP service: visitors discover their **public IPv4 and/or IPv6**, with optional GeoLite **geo** / **ASN**, HTTP prefix **blocklists** and **DNSBL**, split **`ipv4.ip`** / **`ipv6.ip`** home-page JSON merging, and CDN/reverse-proxy-friendly handling of **`CF-Connecting-IP`**, **`X-Forwarded-For`**, and related headers. **`/`** returns **HTML** when **`Accept`** includes **`text/html`** (browser UI backed by **`/json`**: map, geo, ASN, forwarded headers); other clients get **plain text** on **`/`** (e.g. **`curl`**). With **`GET_IP_DUAL_FETCH_IPV4_JSON_URL`**, **`GET_IP_DUAL_FETCH_IPV6_JSON_URL`**, and **`GET_IP_ACCESS_CONTROL_ALLOW_ORIGIN`**, the home page can **merge** split-host **`/json`** responses—see **[documentation/ipv4-ipv6-reverse-proxy-setup.md](documentation/ipv4-ipv6-reverse-proxy-setup.md)**. **`GET /ipv4`** / **`GET /ipv6`** return plain text for one address family; **503** with body **`IPv4_NOT_AVAILABLE`** or **`IPv6_NOT_AVAILABLE`** when that family is absent. **`GET /ipv4/json`** and **`GET /ipv6/json`** match **`GET /json`**. **`/all`** is a plain-text report (optional estimated location + network); **`/json`** includes **`geo`** and **`asn`** when MMDBs are loaded. Optional blocklists live on **`/blocklists`** (HTML), **`/blocklists/json`**, and **`/blocklists/all`** — see [Blocklists](#blocklists). Summaries and forwarded headers use **public** addresses only.
 
 ## Run
 
@@ -36,7 +36,7 @@ On a schedule (**`BLOCKLIST_REFRESH`**, default **`24h`**), the service download
 | **`GET /blocklists/json`** | Same core JSON shape as **`/json`**, plus **`blocklists`** and **`dnsbl`** when configured. |
 | **`GET /blocklists/all`** | Plain-text blocklist report (prefix sections + DNSBL), plus forwarded/geo/asn summary. |
 
-The home page (**`/`**) links to **`/blocklists`** so the default view stays lightweight. Old paths **`/spamlists`**, **`/spamlists/json`**, and **`/spamlists/all`** **301** to these routes.
+The home page (**`/`**) links to **`/blocklists`** so IP discovery stays the focus. Old paths **`/spamlists`**, **`/spamlists/json`**, and **`/spamlists/all`** **301** to these routes.
 
 **Licenses and acceptable use** belong to each feed’s publisher — comply with their terms and attribution (e.g. Spamhaus, FireHOL). Listings are **informational** (routing/blocklist membership), not a legal or abuse verdict.
 
@@ -86,6 +86,8 @@ docker compose -f docker-compose.ghcr.yml pull
 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
+**IPv4 / IPv6 behind Caddy and shared Docker networks** (why `external` networks, `reverse_proxy` to `get-ip:8080`, `enable_ipv6`): **[documentation/ipv4-ipv6-reverse-proxy-setup.md](documentation/ipv4-ipv6-reverse-proxy-setup.md)**.
+
 ## Examples
 
 ```bash
@@ -97,7 +99,7 @@ curl -s http://127.0.0.1:8080/
 203.0.113.7
 ```
 
-Open **`/`** in a normal browser tab to see the lightweight HTML view (same IP, links to **`/all`**, **`/json`**, and **`/blocklists`**).
+Open **`/`** in a browser for the full HTML UI (links to **`/all`**, **`/json`**, and **`/blocklists`**).
 
 Offline mock preview (HTML file + **`python dev/gen_preview.py`**): **[documentation/browser-preview.md](documentation/browser-preview.md)**.
 

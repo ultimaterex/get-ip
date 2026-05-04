@@ -104,19 +104,12 @@ type debugHTTPResponse struct {
 	Headers         map[string][]string `json:"headers"`
 	ForwardedParsed *jsonForwarded      `json:"forwarded_parsed,omitempty"`
 	TLS             *debugTLS           `json:"tls,omitempty"`
-	Hints           []string            `json:"hints"`
 }
 
 func buildDebugResponse(r *http.Request) debugHTTPResponse {
 	var out debugHTTPResponse
 	out.Now = time.Now().UTC().Format(time.RFC3339Nano)
 	out.Endpoint = "GET_IP_DEBUG_HTTP"
-	out.Hints = []string{
-		"If every candidate is private/CGNAT (100.64.0.0/10) or RFC1918, the reverse proxy may be stripping X-Forwarded-For or the visitor is behind carrier-grade NAT.",
-		"If RemoteAddr is a private IP, the app is behind a reverse proxy — configure the proxy to set X-Forwarded-For or X-Real-IP with the client public address.",
-		"Cloudflare and similar must send CF-Connecting-IP (or equivalent); X-Forwarded-For alone may only contain the CDN edge.",
-		"Disable GET_IP_DEBUG_HTTP when finished troubleshooting — this response can include sensitive headers (Authorization/Cookie are redacted).",
-	}
 
 	out.Request.Method = r.Method
 	out.Request.RequestURI = r.RequestURI

@@ -7,6 +7,8 @@ services:
       PORT: "8080"
       # Optional: duplicate console logs to the volume, e.g. LOG_FILE=/data/get-ip.log in `.env`
       LOG_FILE: ${LOG_FILE:-}
+      # Optional: set to 1/true to enable GET /debug and /debug/json (client IP + headers snapshot); disable after troubleshooting
+      GET_IP_DEBUG_HTTP: ${GET_IP_DEBUG_HTTP:-}
       GEOLITE_CITY_PATH: /data/GeoLite2-City.mmdb
       GEOLITE_ASN_PATH: /data/GeoLite2-ASN.mmdb
       MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}
