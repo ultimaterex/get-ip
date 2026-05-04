@@ -109,25 +109,32 @@ body {
   font-weight: 500;
 }
 .links a:hover { text-decoration: underline; }
+/* Same row as links: inline text, not a boxed control */
 .links .btn-copy-json {
-  background: color-mix(in srgb, var(--card) 70%, transparent);
-  border: 1px solid var(--bd);
-  color: var(--accent);
-  font: inherit;
-  font-size: 0.875rem;
-  font-weight: 500;
-  padding: 0.15em 0.5em;
-  border-radius: 6px;
-  cursor: pointer;
+  display: inline;
+  background: none;
+  border: none;
+  padding: 0;
   margin: 0;
+  color: var(--accent);
+  text-decoration: none;
+  font: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  line-height: inherit;
+  cursor: pointer;
   vertical-align: baseline;
+  -webkit-appearance: none;
+  appearance: none;
 }
-.links .btn-copy-json:hover:not(:disabled) {
-  text-decoration: underline;
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--bd));
+.links .btn-copy-json:hover:not(:disabled) { text-decoration: underline; }
+.links .btn-copy-json:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 .links .btn-copy-json:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
   text-decoration: none;
 }
@@ -285,7 +292,7 @@ body.page-loading footer.site {
     <p class="ip" id="hero-ip" translate="no">__PRIMARY_IP__</p>
     <p class="hero-sub" id="hero-sub" aria-live="polite"></p>
     <p class="links">
-      <a href="/all">Plain report</a><span class="sep">·</span><a href="/json" target="_blank" rel="noopener">Raw JSON</a><span class="sep">·</span><button type="button" class="btn-copy-json" id="copy-json-btn" disabled data-default-label="Copy as JSON" aria-label="Copy merged JSON to clipboard">Copy as JSON</button><span class="sep">·</span><a href="/blocklists">Blocklists</a>
+      <button type="button" class="btn-copy-json" id="copy-json-btn" disabled data-default-label="Copy as JSON" aria-label="Copy merged JSON to clipboard">Copy as JSON</button><span class="sep">·</span><a href="/all">Plain report</a><span class="sep">·</span><a href="/json" target="_blank" rel="noopener">Raw JSON</a><span class="sep">·</span><a href="/blocklists">Blocklists</a>
     </p>
   </header>
 
