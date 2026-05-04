@@ -3,7 +3,6 @@ package main
 import (
 	"html"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -21,8 +20,7 @@ func writeRootHTML(w http.ResponseWriter, r *http.Request, ipStr string) {
 
 	esc := html.EscapeString(ipStr)
 	out := strings.ReplaceAll(rootHTMLTemplate, "__PRIMARY_IP__", esc)
-	v4u := strings.TrimSpace(os.Getenv("GET_IP_DUAL_FETCH_IPV4_JSON_URL"))
-	v6u := strings.TrimSpace(os.Getenv("GET_IP_DUAL_FETCH_IPV6_JSON_URL"))
+	v4u, v6u := envDualFetchJSONURLs()
 	out = strings.ReplaceAll(out, "__GETIP_DUAL_V4_URL__", strconv.Quote(v4u))
 	out = strings.ReplaceAll(out, "__GETIP_DUAL_V6_URL__", strconv.Quote(v6u))
 	_, _ = w.Write([]byte(out))
@@ -111,6 +109,28 @@ body {
   font-weight: 500;
 }
 .links a:hover { text-decoration: underline; }
+.links .btn-copy-json {
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+  border: 1px solid var(--bd);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.15em 0.5em;
+  border-radius: 6px;
+  cursor: pointer;
+  margin: 0;
+  vertical-align: baseline;
+}
+.links .btn-copy-json:hover:not(:disabled) {
+  text-decoration: underline;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--bd));
+}
+.links .btn-copy-json:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  text-decoration: none;
+}
 .sep { margin: 0 0.4em; opacity: 0.7; }
 
 .grid {
@@ -265,7 +285,7 @@ body.page-loading footer.site {
     <p class="ip" id="hero-ip" translate="no">__PRIMARY_IP__</p>
     <p class="hero-sub" id="hero-sub" aria-live="polite"></p>
     <p class="links">
-      <a href="/all">Plain report</a><span class="sep">·</span><a href="/json" target="_blank" rel="noopener">Raw JSON</a><span class="sep">·</span><a href="/blocklists">Blocklists</a>
+      <a href="/all">Plain report</a><span class="sep">·</span><a href="/json" target="_blank" rel="noopener">Raw JSON</a><span class="sep">·</span><button type="button" class="btn-copy-json" id="copy-json-btn" disabled data-default-label="Copy as JSON" aria-label="Copy merged JSON to clipboard">Copy as JSON</button><span class="sep">·</span><a href="/blocklists">Blocklists</a>
     </p>
   </header>
 
@@ -294,6 +314,8 @@ body.page-loading footer.site {
   var heroSubEl = document.getElementById('hero-sub');
   var mapMount = document.getElementById('map-mount');
   var map = null;
+  var lastPayload = null;
+  var copyBtn = document.getElementById('copy-json-btn');
 
   function clearPageLoading() {
     document.body.classList.remove('page-loading');
@@ -433,6 +455,8 @@ body.page-loading footer.site {
   }
 
   function renderPage(j) {
+    lastPayload = j;
+    if (copyBtn) copyBtn.disabled = false;
     setPrimaryIP(j);
     heroSubEl.textContent = heroLine(j);
 
@@ -456,11 +480,54 @@ body.page-loading footer.site {
   }
 
   function fail(msg) {
+    lastPayload = null;
+    if (copyBtn) {
+      copyBtn.disabled = true;
+      copyBtn.textContent = copyBtn.getAttribute('data-default-label') || 'Copy as JSON';
+    }
     clearPageLoading();
     statusEl.classList.add('err');
     statusEl.textContent = msg;
     renderPlaceholderMap('Load /json to see the map here.');
   }
+
+  function fallbackCopyText(text, cb) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      cb(ok);
+    } catch (e) {
+      cb(false);
+    }
+  }
+
+  function copyMergedJSON() {
+    if (!lastPayload || !copyBtn) return;
+    var text = JSON.stringify(lastPayload, null, 2);
+    var defLabel = copyBtn.getAttribute('data-default-label') || 'Copy as JSON';
+    function feedback(ok) {
+      copyBtn.textContent = ok ? 'Copied' : 'Copy failed';
+      setTimeout(function () {
+        copyBtn.textContent = defLabel;
+      }, ok ? 1800 : 2200);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { feedback(true); }).catch(function () {
+        fallbackCopyText(text, function (ok) { feedback(ok); });
+      });
+    } else {
+      fallbackCopyText(text, function (ok) { feedback(ok); });
+    }
+  }
+
+  if (copyBtn) copyBtn.addEventListener('click', copyMergedJSON);
 
   function mergeDual(j4, j6) {
     return {

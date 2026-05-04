@@ -219,7 +219,11 @@ Replace **`example.com`** with your apex. **`ipv4.ip`** and **`ipv6.ip`** are **
 
 ### Built-in **`/`** HTML: env-driven dual fetch
 
-If you set **both** of these at runtime, the browser home page (**`GET /`** with **`Accept: text/html`**) loads JSON from **two absolute URLs** in parallel and merges **`ipv4`** / **`ipv6`** (plus **`forwarded`**, **`geo`**, **`asn`**, **`request`** from the first successful payload). If **both** fetches fail, it falls back to **`GET /json`** on the **same** origin.
+If you set **both** of these at runtime, the browser **home** page (**`GET /`** with **`Accept: text/html`**) loads JSON from **two absolute URLs** in parallel and merges **`ipv4`** / **`ipv6`** (plus **`forwarded`**, **`geo`**, **`asn`**, **`request`** from the first successful payload). If **both** fetches fail, it falls back to **`GET /json`** on the **same** origin.
+
+The **`/blocklists`** HTML page uses the **same env vars**: it derives **`https://ipv4.ip.example.com/blocklists/json`** and **`https://ipv6.ip.example.com/blocklists/json`** from those **`…/json`** URLs (same scheme and host, path **`/blocklists/json`**), merges **`ipv4`** / **`ipv6`**, unions HTTP prefix **blocklist** hits, and prefers an **`eligible`** DNSBL payload when one response has public IPv4. If both cross-origin fetches fail, it falls back to **`GET /blocklists/json`** on the same origin.
+
+Opening **`/json`** or **`/blocklists/json`** **directly** in a browser tab is still a **single** HTTP response (no merge)—only the **`/`** and **`/blocklists`** HTML views run client-side dual fetch.
 
 | Variable | Purpose |
 |----------|---------|

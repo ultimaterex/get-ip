@@ -84,6 +84,8 @@ def write_blocklists_preview() -> None:
         "<title>Blocklists · get-ip · mock preview</title>\n" + mock,
     )
     html = html.replace("__PRIMARY_IP__", primary)
+    html = html.replace("__GETIP_DUAL_V4_BL_URL__", json.dumps(""))
+    html = html.replace("__GETIP_DUAL_V6_BL_URL__", json.dumps(""))
     banner = (
         "<!-- Mock preview: blocklists — see documentation/browser-preview.md | regenerate: python dev/gen_preview.py -->\n"
     )

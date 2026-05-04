@@ -3,6 +3,7 @@ package main
 import (
 	"html"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -17,6 +18,9 @@ func writeBlocklistsHTML(w http.ResponseWriter, r *http.Request, primaryIP strin
 
 	esc := html.EscapeString(primaryIP)
 	out := strings.ReplaceAll(blocklistsHTMLTemplate, "__PRIMARY_IP__", esc)
+	v4j, v6j := envDualFetchJSONURLs()
+	out = strings.ReplaceAll(out, "__GETIP_DUAL_V4_BL_URL__", strconv.Quote(blocklistsJSONURLFromDualJSONURL(v4j)))
+	out = strings.ReplaceAll(out, "__GETIP_DUAL_V6_BL_URL__", strconv.Quote(blocklistsJSONURLFromDualJSONURL(v6j)))
 	_, _ = w.Write([]byte(out))
 }
 
@@ -227,6 +231,7 @@ body.page-loading footer.site {
 </footer>
 <script>
 (function () {
+  var DUAL_BLOCKLISTS_URLS = { v4: __GETIP_DUAL_V4_BL_URL__, v6: __GETIP_DUAL_V6_BL_URL__ };
   var statusEl = document.getElementById('status');
   var panelsEl = document.getElementById('panels');
 
@@ -334,7 +339,17 @@ body.page-loading footer.site {
     return head + rows;
   }
 
+  function setHeaderIPs(j) {
+    var h = document.querySelector('header h1');
+    if (!h) return;
+    var parts = [];
+    if (j.ipv4) parts.push(j.ipv4);
+    if (j.ipv6) parts.push(j.ipv6);
+    if (parts.length) h.innerHTML = parts.map(esc).join('<br>');
+  }
+
   function render(j) {
+    setHeaderIPs(j);
     var html = '';
     html += card('HTTP prefix blocklists', renderBlocklists(j.blocklists));
     html += card('DNS blocklists (DNSBL)', renderDnsbl(j.dnsbl));
@@ -350,7 +365,85 @@ body.page-loading footer.site {
     statusEl.textContent = msg;
   }
 
+  function mergeDualCore(j4, j6) {
+    return {
+      ipv4: (j4 && j4.ipv4) || (j6 && j6.ipv4) || null,
+      ipv6: (j6 && j6.ipv6) || (j4 && j4.ipv6) || null,
+      forwarded: (j4 && j4.forwarded) || (j6 && j6.forwarded),
+      geo: (j4 && j4.geo) || (j6 && j6.geo),
+      asn: (j4 && j4.asn) || (j6 && j6.asn),
+      request: (j4 && j4.request) || (j6 && j6.request)
+    };
+  }
+
+  function mergeBlocklistsObj(a, b) {
+    if (!a && !b) return null;
+    if (!a) return b;
+    if (!b) return a;
+    var listed = !!(a.listed || b.listed);
+    var matched = [];
+    var seen = {};
+    function addList(arr) {
+      (arr || []).forEach(function (x) {
+        if (x && !seen[x]) {
+          seen[x] = true;
+          matched.push(x);
+        }
+      });
+    }
+    addList(a.matched);
+    addList(b.matched);
+    var matches = (a.matches || []).concat(b.matches || []);
+    var src = Math.max(a.sources_loaded || 0, b.sources_loaded || 0);
+    var last = (a.last_refresh && b.last_refresh) ? (a.last_refresh > b.last_refresh ? a.last_refresh : b.last_refresh) : (a.last_refresh || b.last_refresh);
+    return { listed: listed, matched: matched, matches: matches, sources_loaded: src, last_refresh: last };
+  }
+
+  function pickDnsbl(d4, d6) {
+    if (d4 && d4.eligible) return d4;
+    if (d6 && d6.eligible) return d6;
+    return d4 || d6 || null;
+  }
+
+  function mergeBlocklistsPayload(j4, j6) {
+    var o = mergeDualCore(j4, j6);
+    o.blocklists = mergeBlocklistsObj(j4 && j4.blocklists, j6 && j6.blocklists);
+    o.dnsbl = pickDnsbl(j4 && j4.dnsbl, j6 && j6.dnsbl);
+    return o;
+  }
+
+  function fetchJSONAbs(url) {
+    return fetch(url, { credentials: 'omit', mode: 'cors', headers: { Accept: 'application/json' } })
+      .then(function (r) {
+        if (!r.ok) throw new Error(url + ': HTTP ' + r.status);
+        return r.json();
+      });
+  }
+
   function runFetch() {
+    var v4 = DUAL_BLOCKLISTS_URLS.v4;
+    var v6 = DUAL_BLOCKLISTS_URLS.v6;
+    if (v4 && v6) {
+      Promise.allSettled([fetchJSONAbs(v4), fetchJSONAbs(v6)])
+        .then(function (results) {
+          var j4 = results[0].status === 'fulfilled' ? results[0].value : null;
+          var j6 = results[1].status === 'fulfilled' ? results[1].value : null;
+          if (j4 || j6) {
+            render(mergeBlocklistsPayload(j4, j6));
+            return;
+          }
+          return fetch('/blocklists/json', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+            .then(function (r) {
+              if (!r.ok) throw new Error('HTTP ' + r.status);
+              return r.json();
+            })
+            .then(render);
+        })
+        .catch(function (e) {
+          fail('Could not load blocklists JSON: ' + e.message);
+        });
+      return;
+    }
     fetch('/blocklists/json', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
