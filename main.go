@@ -43,6 +43,10 @@ func main() {
 	mux.HandleFunc("/spamlists/all", legacyRedirect("/blocklists/all"))
 	mux.HandleFunc("/spamlists", legacyRedirect("/blocklists"))
 	mux.HandleFunc("/health", handleHealth)
+	if debugHTTPEnabled() {
+		mux.HandleFunc("/debug", handleDebug)
+		mux.HandleFunc("/debug/json", handleDebug)
+	}
 
 	addr := ":" + port
 	log.Printf("listening on %s", addr)
@@ -417,6 +421,35 @@ func buildJSONForwarded(r *http.Request) *jsonForwarded {
 	return &f
 }
 
+// visitorIPRejectReason explains why an IP is not treated as a public visitor address (empty if public).
+func visitorIPRejectReason(ip net.IP) string {
+	if ip == nil {
+		return "unparseable_or_missing"
+	}
+	if ip.IsUnspecified() {
+		return "unspecified"
+	}
+	if ip.IsLoopback() {
+		return "loopback"
+	}
+	if ip.IsPrivate() {
+		return "private_rfc1918"
+	}
+	if ip.IsLinkLocalUnicast() {
+		return "link_local"
+	}
+	if ip.IsMulticast() {
+		return "multicast"
+	}
+	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+		return "cgnat_carrier_grade_nat"
+	}
+	if !ip.IsGlobalUnicast() {
+		return "not_global_unicast"
+	}
+	return ""
+}
+
 // isPublicVisitorIP reports IPs safe to show visitors: routable on the public Internet.
 // net.IP.IsGlobalUnicast is NOT sufficient — for IPv4 it returns true even for RFC1918
 // private space (e.g. 172.22.0.1). We exclude private, loopback, link-local, and multicast.
@@ -518,20 +551,29 @@ func preferredIPv6(r *http.Request) net.IP {
 	return nil
 }
 
-// collectCandidates returns IPs in trust order for typical CDN → reverse-proxy → app stacks.
+// ipCandidate is one place we look for the client IP (headers then TCP remote).
+type ipCandidate struct {
+	Source string `json:"source"`
+	Raw    string `json:"raw,omitempty"`
+	IP     net.IP `json:"-"`
+}
+
+// collectIPCandidates returns IPs in trust order for typical CDN → reverse-proxy → app stacks.
 // Cloudflare and similar set CF-Connecting-IP / True-Client-IP to the end user; X-Forwarded-For
 // may only list the CDN edge (e.g. 172.68.x.x), so those headers must come before XFF.
-func collectCandidates(r *http.Request) []net.IP {
-	var out []net.IP
+// Invalid XFF tokens are included with IP unset so debug endpoints can surface them.
+func collectIPCandidates(r *http.Request) []ipCandidate {
+	var out []ipCandidate
 	seen := map[string]struct{}{}
 
-	add := func(s string) {
+	add := func(source, s string) {
 		s = strings.TrimSpace(s)
 		if s == "" {
 			return
 		}
 		ip := net.ParseIP(s)
 		if ip == nil {
+			out = append(out, ipCandidate{Source: source, Raw: s})
 			return
 		}
 		key := ip.String()
@@ -539,23 +581,33 @@ func collectCandidates(r *http.Request) []net.IP {
 			return
 		}
 		seen[key] = struct{}{}
-		out = append(out, ip)
+		out = append(out, ipCandidate{Source: source, Raw: s, IP: ip})
 	}
 
-	add(r.Header.Get("CF-Connecting-IP"))
-	add(r.Header.Get("True-Client-IP"))
-	add(r.Header.Get("X-Real-IP"))
+	add("CF-Connecting-IP", r.Header.Get("CF-Connecting-IP"))
+	add("True-Client-IP", r.Header.Get("True-Client-IP"))
+	add("X-Real-IP", r.Header.Get("X-Real-IP"))
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		for _, part := range strings.Split(xff, ",") {
-			add(strings.TrimSpace(part))
+		for i, part := range strings.Split(xff, ",") {
+			add(fmt.Sprintf("X-Forwarded-For[%d]", i), strings.TrimSpace(part))
 		}
 	}
 
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		add(r.RemoteAddr)
+		add("RemoteAddr", r.RemoteAddr)
 	} else {
-		add(host)
+		add("RemoteAddr", host)
+	}
+	return out
+}
+
+func collectCandidates(r *http.Request) []net.IP {
+	var out []net.IP
+	for _, c := range collectIPCandidates(r) {
+		if c.IP != nil {
+			out = append(out, c.IP)
+		}
 	}
 	return out
 }

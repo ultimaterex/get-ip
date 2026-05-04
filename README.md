@@ -16,6 +16,8 @@ go build -o get-ip . && ./get-ip
 
 **Discovery:** HTML responses include **`Link`** headers for **`</json>`** and **`</blocklists/json>`** (`rel="alternate"; type="application/json"`) where applicable ([RFC 8288](https://www.rfc-editor.org/rfc/rfc8288)).
 
+**Client IP troubleshooting:** If **`/`** returns **503** “could not determine client IP”, no **public** address was found from **`CF-Connecting-IP`**, **`True-Client-IP`**, **`X-Real-IP`**, **`X-Forwarded-For`**, or the TCP **`RemoteAddr`**. Typical causes: the reverse proxy does not set forwarded headers; **`X-Forwarded-For`** only contains private or CDN edge addresses; or the visitor path is **CGNAT** (**`100.64.0.0/10`**, treated as non-public here). With **`GET_IP_DEBUG_HTTP=1`** (restart required), **`GET /debug`** and **`GET /debug/json`** return JSON with every IP candidate, parse errors, rejection reasons, all request headers (**`Authorization`** / **`Cookie`** redacted), optional TLS info, and the same forwarded summary as **`/json`**. Each **`GET`** (not **`HEAD`**) also writes the same snapshot to the process **log** (`debug: …` lines: request line, common **`Header.Get`** forwards, every candidate, diagnostics, TLS, then **every header** line). **Disable after troubleshooting** — the payload and logs are verbose and not for untrusted exposure.
+
 If a **`.env`** file exists in the current working directory, it is loaded at startup (MaxMind and other variables). Values already set in the environment take precedence. **`.env`** is gitignored.
 
 ## Blocklist feeds (optional)
@@ -227,6 +229,7 @@ If credentials are **not** set, nothing is downloaded automatically; the app sti
 | `GEOLITE_ASN_PATH` | Path to the ASN MMDB (default `data/GeoLite2-ASN.mmdb`; Docker defaults to `/data/GeoLite2-ASN.mmdb`) |
 | `GEOLITE_MAX_AGE_DAYS` | Re-download if the file is older than this many days (default **7**) |
 | `LOG_FILE` | If set, append the same log lines the process writes to stdout (Go **`log`** package) to this file. Stdout is unchanged, so **`docker logs`** still works. Example for Compose with the default **`/data`** volume: **`LOG_FILE=/data/get-ip.log`** in **`.env`**. Leave empty or unset to disable file logging. |
+| `GET_IP_DEBUG_HTTP` | Set to **`1`**, **`true`**, **`yes`**, or **`on`** to register **`GET /debug`** and **`GET /debug/json`** (JSON client-IP diagnostics). **Off by default** — disable after troubleshooting. |
 | `BLOCKLIST_URLS` | Semicolon-separated HTTP(S) URLs of CIDR blocklist feeds. Optional **`url|tag`** per [Blocklist feeds](#blocklist-feeds-optional). Empty disables the feature. |
 | `BLOCKLIST_REFRESH` | How often to re-download feeds (Go **`time.ParseDuration`**, e.g. **`24h`**, **`6h`**). Default **`24h`**. Minimum effective refresh is **1m** (invalid values fall back to **`24h`**). |
 | `DNSBL_ZONES` | Semicolon-separated DNSBL zone names (optional **`zone|tag`**). Empty disables live DNSBL lookups. See [DNS blocklists](#dns-blocklists--dnsbl-optional). |
